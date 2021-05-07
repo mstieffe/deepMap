@@ -332,7 +332,9 @@ class GAN():
 
     def overlap_loss(self, aa_mol, cg_mol):
         aa_mol = torch.sum(aa_mol, 1)
+        aa_mol = aa_mol / torch.sum(aa_mol, (1, 2, 3), keepdim=True)
         cg_mol = torch.sum(cg_mol, 1)
+        cg_mol = cg_mol / torch.sum(cg_mol, (1, 2, 3), keepdim=True)
         overlap_loss = aa_mol * cg_mol
         overlap_loss = torch.sum(overlap_loss, (1,2,3))
         overlap_loss = -torch.mean(overlap_loss, 0)
@@ -489,7 +491,7 @@ class GAN():
                     c_loss = self.train_step_critic(elems)
                     n += 1
 
-            tqdm.write(g_loss_dict)
+            #tqdm.write(g_loss_dict)
             """
             tqdm.write('epoch {} steps {} : D: {} G: {}, E_cg: {}, {}, {}, {}, E_aa: {}, {}, {}, {}, OL: {}'.format(
                 self.epoch,
@@ -552,7 +554,7 @@ class GAN():
                     sigma=self.cfg.getfloat('grid', 'sigma_cg'),
                     device=self.device,)
                 for positions, mol in zip(coords, mols):
-                    positions = positions.detach().numpy()
+                    positions = positions.detach().cpu().numpy()
                     positions = np.dot(positions, mol.rot_mat.T)
                     for pos, bead in zip(positions, mol.beads):
                         bead.pos = pos + mol.com
