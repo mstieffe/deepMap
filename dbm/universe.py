@@ -295,11 +295,11 @@ class Universe():
 
             n = 1
             for mol in self.mols:
-                for a in mol.beads:
+                for b in mol.beads:
                     f.write('{:5d}{:5s}{:>5s}{:5d}{:8.3f}{:8.3f}{:8.3f}{:8.3f}{:8.3f}{:8.3f}\n'.format(
-                        a.mol.index,
-                        a.mol.name,
-                        a.type.name+str(a.mol.atoms.index(a)+1),
+                        b.mol.index,
+                        b.mol.name,
+                        b.type.name+str(b.mol.beads.index(b)+1),
                         n % 100000,
                         b.pos[0],
                         b.pos[1],

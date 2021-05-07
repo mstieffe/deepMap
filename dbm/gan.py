@@ -181,6 +181,8 @@ class GAN():
         self.energy_aa = Energy_torch(self.ff_aa, self.device)
         self.energy_cg = Energy_torch(self.ff_aa, self.device)
 
+        self.ol_weight = cfg.getfloat('prior', 'ol')
+
         prior_weights = self.cfg.get('prior', 'weights')
         self.prior_weights = [float(v) for v in prior_weights.split(",")]
         prior_schedule = self.cfg.get('prior', 'schedule')
@@ -219,7 +221,7 @@ class GAN():
 
 
         self.use_gp = cfg.getboolean('model', 'gp')
-        self.overlap_loss = cfg.getboolean('model', 'overlap_loss')
+        self.use_ol = cfg.getboolean('model', 'ol')
 
         #self.mse = torch.nn.MSELoss()
         #self.kld = torch.nn.KLDivLoss(reduction="batchmean")
@@ -441,7 +443,7 @@ class GAN():
         epochs.set_description('epoch: ')
         for epoch in epochs:
             n = 0
-            loss_epoch = [[]]*10
+            #loss_epoch = [[]]*11
             val_iterator = iter(self.loader_val)
             tqdm_train_iterator = tqdm(self.loader_train, total=steps_per_epoch, leave=False)
             for train_batch in tqdm_train_iterator:
@@ -454,7 +456,7 @@ class GAN():
                     #print(g_loss_dict)
                     for key, value in g_loss_dict.items():
                         self.out.add_scalar(key, value, global_step=self.step)
-                    tqdm_train_iterator.set_description('D: {}, G: {}, E_cg: {}, {}, {}, {}, E_aa: {}, {}, {}, {}'.format(c_loss,
+                    tqdm_train_iterator.set_description('D: {}, G: {}, E_cg: {}, {}, {}, {}, E_aa: {}, {}, {}, {}, OL: {}'.format(c_loss,
                                                                                    g_loss_dict['Generator/wasserstein'],
                                                                                    g_loss_dict['Generator/e_bond_cg'],
                                                                                    g_loss_dict['Generator/e_angle_cg'],
@@ -466,8 +468,8 @@ class GAN():
                                                                                    g_loss_dict['Generator/e_lj_aa'],
                                                                                    g_loss_dict['Generator/overlap']))
 
-                    for value, l in zip([c_loss] + list(g_loss_dict.values()), loss_epoch):
-                        l.append(value)
+                    #for value, l in zip([c_loss] + list(g_loss_dict.values()), loss_epoch):
+                    #    l.append(value)
 
                     if self.loader_val:
                         try:
@@ -487,8 +489,9 @@ class GAN():
                     c_loss = self.train_step_critic(elems)
                     n += 1
 
-
-            tqdm.write('epoch {} steps {} : D: {} G: {}, E_cg: {}, {}, {}, {}, E_aa: {}, {}, {}, {}'.format(
+            tqdm.write(g_loss_dict)
+            """
+            tqdm.write('epoch {} steps {} : D: {} G: {}, E_cg: {}, {}, {}, {}, E_aa: {}, {}, {}, {}, OL: {}'.format(
                 self.epoch,
                 self.step,
                 sum(loss_epoch[0]) / len(loss_epoch[0]),
@@ -504,6 +507,7 @@ class GAN():
                 sum(loss_epoch[10]) / len(loss_epoch[10]),
 
             ))
+            """
 
             self.epoch += 1
 
@@ -627,8 +631,8 @@ class GAN():
         #loss
         g_wass = self.generator_loss(fake_mol)
         g_overlap = self.overlap_loss(features, fake_mol)
-        if self.overlap_loss:
-            g_loss = g_wass + g_overlap
+        if self.use_ol:
+            g_loss = g_wass + self.ol_weight * g_overlap
         else:
             g_loss = g_wass
 
