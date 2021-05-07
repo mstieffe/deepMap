@@ -49,7 +49,8 @@ class DS(Dataset):
 
         self.resolution = cfg.getint('grid', 'resolution')
         self.delta_s = cfg.getfloat('grid', 'length') / cfg.getint('grid', 'resolution')
-        self.sigma = cfg.getfloat('grid', 'sigma')
+        self.sigma_aa = cfg.getfloat('grid', 'sigma_aa')
+        self.sigma_cg = cfg.getfloat('grid', 'sigma_cg')
 
         if cfg.getboolean('training', 'rand_rot'):
             self.rand_rot = True
@@ -74,17 +75,17 @@ class DS(Dataset):
 
 
         aa_coords_intra = np.dot(d['aa_positions_intra'], R.T)
-        aa_blobbs_intra = voxelize_gauss(aa_coords_intra, self.sigma, self.grid)
+        aa_blobbs_intra = voxelize_gauss(aa_coords_intra, self.sigma_aa, self.grid)
         aa_features_intra = d['aa_intra_featvec'][:, :, None, None, None] * aa_blobbs_intra[:, None, :, :, :]
         aa_features_intra = np.sum(aa_features_intra, 0)
 
-        cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma, self.grid)
+        cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
 
         #if d['aa_positions_inter']:
         if self.n_interatoms:
             aa_coords_inter = np.dot(d['aa_positions_inter'], R.T)
             aa_coords = np.concatenate((aa_coords_intra, aa_coords_inter), 0)
-            aa_blobbs_inter = voxelize_gauss(aa_coords_inter, self.sigma, self.grid)
+            aa_blobbs_inter = voxelize_gauss(aa_coords_inter, self.sigma_aa, self.grid)
             aa_features_inter = d['aa_inter_featvec'][:, :, None, None, None] * aa_blobbs_inter[:, None, :, :, :]
             aa_features_inter = np.sum(aa_features_inter, 0)
             features = np.concatenate((aa_features_intra, aa_features_inter), 0)
@@ -94,7 +95,7 @@ class DS(Dataset):
             aa_coords = aa_coords_intra
 
         if self.n_interatoms:
-            cg_positions_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma, self.grid)
+            cg_positions_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
 
         target = cg_positions_intra
 
@@ -155,7 +156,7 @@ class GAN():
         #self.loader_val = cycle(loader_val)
         #self.val_data = ds_val.data
 
-        self.n_gibbs = int(cfg.getint('validate', 'n_gibbs'))
+        #self.n_gibbs = int(cfg.getint('validate', 'n_gibbs'))
 
         #model
         self.name = cfg.get('model', 'name')
@@ -218,6 +219,7 @@ class GAN():
 
 
         self.use_gp = cfg.getboolean('model', 'gp')
+        self.overlap_loss = cfg.getboolean('model', 'overlap_loss')
 
         #self.mse = torch.nn.MSELoss()
         #self.kld = torch.nn.KLDivLoss(reduction="batchmean")
@@ -326,6 +328,15 @@ class GAN():
     def generator_loss(self, critic_fake):
         return (-1.0 * critic_fake).mean()
 
+    def overlap_loss(self, aa_mol, cg_mol):
+        aa_mol = torch.sum(aa_mol, 1)
+        cg_mol = torch.sum(cg_mol, 1)
+        overlap_loss = aa_mol * cg_mol
+        overlap_loss = torch.sum(overlap_loss, (1,2,3))
+        overlap_loss = -torch.mean(overlap_loss, 0)
+        return overlap_loss
+
+
     def critic_loss(self, critic_real, critic_fake):
         loss_on_generated = critic_fake.mean()
         loss_on_real = critic_real.mean()
@@ -395,7 +406,7 @@ class GAN():
             atom_grid,
             res=self.cfg.getint('grid', 'resolution'),
             width=self.cfg.getfloat('grid', 'length'),
-            sigma=self.cfg.getfloat('grid', 'sigma'),
+            sigma=self.cfg.getfloat('grid', 'sigma_cg'),
             device=self.device,
         )
         bond_ndx, angle_ndx, dih_ndx, lj_intra_ndx, lj_ndx = energy_ndx
@@ -453,7 +464,7 @@ class GAN():
                                                                                    g_loss_dict['Generator/e_angle_aa'],
                                                                                    g_loss_dict['Generator/e_dih_aa'],
                                                                                    g_loss_dict['Generator/e_lj_aa'],
-                                                                                   g_loss_dict['Generator/prior_weight']))
+                                                                                   g_loss_dict['Generator/overlap']))
 
                     for value, l in zip([c_loss] + list(g_loss_dict.values()), loss_epoch):
                         l.append(value)
@@ -490,6 +501,8 @@ class GAN():
                 sum(loss_epoch[7]) / len(loss_epoch[7]),
                 sum(loss_epoch[8]) / len(loss_epoch[8]),
                 sum(loss_epoch[9]) / len(loss_epoch[9]),
+                sum(loss_epoch[10]) / len(loss_epoch[10]),
+
             ))
 
             self.epoch += 1
@@ -502,39 +515,43 @@ class GAN():
     def val(self):
         resolution = self.cfg.getint('grid', 'resolution')
         delta_s = self.cfg.getfloat('grid', 'length') / self.cfg.getint('grid', 'resolution')
-        sigma = self.cfg.getfloat('grid', 'sigma')
+        sigma = self.cfg.getfloat('grid', 'sigma_cg')
         grid = torch.from_numpy(make_grid_np(delta_s, resolution)).to(self.device)
 
         g = Mol_Generator_AA(self.data, train=False, rand_rot=False)
         all_elems = list(g)
         for ndx in range(0, len(all_elems), self.bs):
-            batch = all_elems[ndx:min(ndx + self.bs, len(all_elems))]
+            with torch.no_grad():
+                batch = all_elems[ndx:min(ndx + self.bs, len(all_elems))]
 
-            aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
-            aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
+                aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
+                aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
 
-            mols = np.array([d['aa_mol'] for d in batch])
+                mols = np.array([d['aa_mol'] for d in batch])
 
-            aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
-            aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma)
+                aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
+                aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma)
 
-            features = torch.from_numpy(aa_intra_featvec[None, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
-            features = torch.sum(features, 1)
+                #print(aa_intra_featvec[:, :, :, None, None, None].shape)
+                #print(aa_blobbs_intra[:, :, None, :, :, :].size())
+                features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
+                features = torch.sum(features, 1)
 
-            #elems, energy_ndx_aa, energy_ndx_cg = val_batch
-            #features, _, aa_coords_intra, aa_coords = elems
-            fake_mol = self.generator(features)
+                #elems, energy_ndx_aa, energy_ndx_cg = val_batch
+                #features, _, aa_coords_intra, aa_coords = elems
+                fake_mol = self.generator(features)
 
-            coords = avg_blob(
-                fake_mol,
-                res=self.cfg.getint('grid', 'resolution'),
-                width=self.cfg.getfloat('grid', 'length'),
-                sigma=self.cfg.getfloat('grid', 'sigma'),
-                device=self.device,)
-            for positions, mol in zip(coords, mols):
-                positions = np.dot(positions, mol.rot_mat.T)
-                for pos, bead in zip(positions, mol.beads):
-                    bead.pos = pos + mol.com
+                coords = avg_blob(
+                    fake_mol,
+                    res=self.cfg.getint('grid', 'resolution'),
+                    width=self.cfg.getfloat('grid', 'length'),
+                    sigma=self.cfg.getfloat('grid', 'sigma_cg'),
+                    device=self.device,)
+                for positions, mol in zip(coords, mols):
+                    positions = positions.detach().numpy()
+                    positions = np.dot(positions, mol.rot_mat.T)
+                    for pos, bead in zip(positions, mol.beads):
+                        bead.pos = pos + mol.com
 
         samples_dir = self.out.output_dir / "samples"
         samples_dir.mkdir(exist_ok=True)
@@ -588,7 +605,7 @@ class GAN():
         features, _, aa_coords_intra, aa_coords = elems
 
 
-        g_wass = torch.zeros([], dtype=torch.float32, device=self.device)
+        #g_wass = torch.zeros([], dtype=torch.float32, device=self.device)
 
         """
         z = torch.empty(
@@ -608,8 +625,13 @@ class GAN():
         #critic_fake = torch.squeeze(critic_fake)
 
         #loss
-        g_wass += self.generator_loss(fake_mol)
-        g_loss = g_wass
+        g_wass = self.generator_loss(fake_mol)
+        g_overlap = self.overlap_loss(features, fake_mol)
+        if self.overlap_loss:
+            g_loss = g_wass + g_overlap
+        else:
+            g_loss = g_wass
+
 
         #real_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, target_atom[:, None, :, :, :])
         #fake_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, fake_atom)
@@ -635,7 +657,7 @@ class GAN():
                        "Generator/e_angle_aa": e_angle_aa.detach().cpu().numpy(),
                        "Generator/e_dih_aa": e_dih_aa.detach().cpu().numpy(),
                        "Generator/e_lj_aa": e_lj_aa.detach().cpu().numpy(),
-                       "Generator/prior_weight": self.prior_weight()}
+                       "Generator/overlap": g_overlap.detach().cpu().numpy()}
 
         return g_loss_dict
 
