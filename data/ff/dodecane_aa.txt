@@ -1,0 +1,48 @@
+[general]
+; Name      nrexcl		n_atoms
+dodecane_aa           3		38
+[/general]
+
+[atom_types]
+;name	channel   mass      charge       sigma      epsilon
+C	0       12.0110     0.0000          0.3207      0.3519
+H	1        1.0080     0.0000          0.2318      0.3180
+[/atom_types]
+
+[bond_types]
+; i     j	channel  func        b0          kb
+C      C	-1       1       0.1530   7.1500e+06
+C      H	-1       1       0.1090   1.2300e+07
+[/bond_types]
+
+[angle_types]
+; i     j      k	channel  func       th0         cth
+H      C      H		-1       1       106.75   503.00
+H      C      C 	-1       1       109.50   448.00
+C      C      C 	-1       1       111.00   530.00
+[/angle_types]
+
+
+[dihedral_types]
+; i    j     k     l	channel func 
+C      C     C     C	-1      1    0.00     5.92    3
+H      C     C     C	-1      1    0.00     5.92    3
+[/dihedral_types]
+
+[lj_types]
+; i     j       channel
+C       C    -1
+C       H    -1
+H       H    -1
+[/lj_types]
+
+[align]
+;i	j
+2	35
+[/align]
+
+[bead_types]
+;name	channel
+B	2
+[/bead_types]
+
