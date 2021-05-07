@@ -331,6 +331,15 @@ class GAN():
         return (-1.0 * critic_fake).mean()
 
     def overlap_loss(self, aa_mol, cg_mol):
+        aa_mol = torch.flatten(torch.sum(aa_mol, 1), 1)
+        aa_mol = aa_mol / torch.sum(aa_mol, 1, keepdim=True)
+        cg_mol = torch.flatten(torch.sum(cg_mol, 1), 1)
+        cg_mol = torch.sum(cg_mol, 1)
+
+        overlap_loss = (aa_mol * (aa_mol / cg_mol).log()).sum(1)
+        return torch.mean(overlap_loss)
+
+    def overlap_loss2(self, aa_mol, cg_mol):
         aa_mol = torch.sum(aa_mol, 1)
         aa_mol = aa_mol / torch.sum(aa_mol, (1, 2, 3), keepdim=True)
         cg_mol = torch.sum(cg_mol, 1)
@@ -339,7 +348,6 @@ class GAN():
         overlap_loss = torch.sum(overlap_loss, (1,2,3))
         overlap_loss = -torch.mean(overlap_loss, 0)
         return overlap_loss
-
 
     def critic_loss(self, critic_real, critic_fake):
         loss_on_generated = critic_fake.mean()
