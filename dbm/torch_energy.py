@@ -68,10 +68,10 @@ class Energy_torch():
         dis = torch.where(dis > self.bond_min_dist, dis, self.bond_min_dist)
 
         en = dis - a_0
+
         en = en**2
         en = en * f_c / 2.0
         en = torch.sum(en, 1)
-
         return en
 
 

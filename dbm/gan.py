@@ -179,7 +179,7 @@ class GAN():
             self.cfg.get('model', 'output_dir'),
         )
         self.energy_aa = Energy_torch(self.ff_aa, self.device)
-        self.energy_cg = Energy_torch(self.ff_aa, self.device)
+        self.energy_cg = Energy_torch(self.ff_cg, self.device)
 
         self.ol_weight = cfg.getfloat('prior', 'ol')
 
@@ -334,7 +334,7 @@ class GAN():
         aa_mol = torch.flatten(torch.sum(aa_mol, 1), 1)
         aa_mol = aa_mol / torch.sum(aa_mol, 1, keepdim=True)
         cg_mol = torch.flatten(torch.sum(cg_mol, 1), 1)
-        cg_mol = torch.sum(cg_mol, 1)
+        cg_mol = cg_mol / torch.sum(cg_mol, 1, keepdim=True)
 
         overlap_loss = (aa_mol * (aa_mol / cg_mol).log()).sum(1)
         return torch.mean(overlap_loss)
@@ -421,6 +421,7 @@ class GAN():
             sigma=self.cfg.getfloat('grid', 'sigma_cg'),
             device=self.device,
         )
+        #print(coords)
         bond_ndx, angle_ndx, dih_ndx, lj_intra_ndx, lj_ndx = energy_ndx
         if bond_ndx.size()[1]:
             b_energy = self.energy_cg.bond(coords, bond_ndx)
@@ -466,7 +467,7 @@ class GAN():
                     #print(g_loss_dict)
                     for key, value in g_loss_dict.items():
                         self.out.add_scalar(key, value, global_step=self.step)
-                    tqdm_train_iterator.set_description('D: {}, G: {}, E_cg: {}, {}, {}, {}, E_aa: {}, {}, {}, {}, OL: {}'.format(c_loss,
+                    tqdm_train_iterator.set_description('D: {:.2f}, G: {:.2f}, E_cg: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_aa: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}'.format(c_loss,
                                                                                    g_loss_dict['Generator/wasserstein'],
                                                                                    g_loss_dict['Generator/e_bond_cg'],
                                                                                    g_loss_dict['Generator/e_angle_cg'],
@@ -616,7 +617,7 @@ class GAN():
 
     def train_step_gen(self, elems, energy_ndx_aa, energy_ndx_cg, backprop=True):
 
-        features, _, aa_coords_intra, aa_coords = elems
+        features, target, aa_coords_intra, aa_coords = elems
 
 
         #g_wass = torch.zeros([], dtype=torch.float32, device=self.device)
@@ -641,17 +642,21 @@ class GAN():
         #loss
         g_wass = self.generator_loss(fake_mol)
         g_overlap = self.overlap_loss(features, fake_mol)
-        if self.use_ol:
-            g_loss = g_wass + self.ol_weight * g_overlap
-        else:
-            g_loss = g_wass
+        #if self.use_ol:
+        #    g_loss = g_wass + self.ol_weight * g_overlap
+        #else:
+        #    g_loss = g_wass
 
+        g_loss = g_overlap
 
         #real_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, target_atom[:, None, :, :, :])
         #fake_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, fake_atom)
 
         e_bond_cg, e_angle_cg, e_dih_cg, e_lj_cg = self.get_energies_cg(fake_mol, energy_ndx_cg)
         e_bond_aa, e_angle_aa, e_dih_aa, e_lj_aa = self.get_energies_aa(aa_coords_intra, aa_coords, energy_ndx_aa)
+
+        if 1:
+            g_loss += e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg
 
         #g_loss = g_wass + self.prior_weight() * energy_loss
         #g_loss = g_wass
