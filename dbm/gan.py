@@ -223,7 +223,7 @@ class GAN():
         #Model selection
         #if cfg.get('model', 'model_type') == "tiny":
         #    print("Using tiny model")
-        self.generator = model.AtomGen_noise(n_input=self.z_dim,
+        self.generator = model.AtomGen_tiny(n_input=self.n_input,
                                             n_output=self.n_out,
                                             start_channels=self.cfg.getint('model', 'n_chns'),
                                             fac=1,
@@ -605,7 +605,7 @@ class GAN():
 
         features, target, _, _ = elems
 
-        #c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
+        c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
         #prepare input for generator
 
@@ -629,7 +629,7 @@ class GAN():
         #loss
         c_wass = self.critic_loss(critic_real, critic_fake)
         c_eps = self.epsilon_penalty(1e-3, critic_real)
-        c_loss = c_wass + c_eps
+        c_loss += c_wass + c_eps
         if self.use_gp:
             c_gp = self.gradient_penalty(target, fake_mol)
             c_loss += c_gp
@@ -646,7 +646,7 @@ class GAN():
         features, target, aa_coords_intra, aa_coords = elems
 
 
-        #g_wass = torch.zeros([], dtype=torch.float32, device=self.device)
+        g_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
 
         z = torch.empty(
@@ -669,9 +669,9 @@ class GAN():
         g_wass = self.generator_loss(fake_mol)
         g_overlap = self.overlap_loss(features, fake_mol)
         if self.use_ol:
-            g_loss = g_wass + self.ol_weight * g_overlap
+            g_loss += g_wass + self.ol_weight * g_overlap
         else:
-            g_loss = g_wass
+            g_loss += g_wass
 
         #g_loss = g_overlap
 
@@ -690,6 +690,8 @@ class GAN():
         if backprop:
             self.opt_generator.zero_grad()
             g_loss.backward()
+            #for param in self.generator.parameters():
+            #    print(param.grad)
             self.opt_generator.step()
 
 
