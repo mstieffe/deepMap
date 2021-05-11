@@ -76,8 +76,9 @@ class DS(Dataset):
 
         aa_coords_intra = np.dot(d['aa_positions_intra'], R.T)
         aa_blobbs_intra = voxelize_gauss(aa_coords_intra, self.sigma_aa, self.grid)
-        aa_features_intra = d['aa_intra_featvec'][:, :, None, None, None] * aa_blobbs_intra[:, None, :, :, :]
-        aa_features_intra = np.sum(aa_features_intra, 0)
+        #aa_features_intra = d['aa_intra_featvec'][:, :, None, None, None] * aa_blobbs_intra[:, None, :, :, :]
+        #aa_features_intra = np.sum(aa_features_intra, 0)
+        aa_features_intra = aa_blobbs_intra
 
         cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
 
@@ -101,6 +102,28 @@ class DS(Dataset):
 
         energy_ndx_aa = (d['aa_bond_ndx'], d['aa_ang_ndx'], d['aa_dih_ndx'], d['aa_lj_intra_ndx'], d['aa_lj_ndx'])
         energy_ndx_cg = (d['cg_bond_ndx'], d['cg_ang_ndx'], d['cg_dih_ndx'], d['cg_lj_intra_ndx'],  d['cg_lj_ndx'])
+
+        """
+        fig = plt.figure(figsize=(20, 20))
+        n_chns = 4
+        colours = ['red', 'black', 'green', 'blue']
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
+        # ax.scatter(mol_aa.com[0], mol_aa.com[1],mol_aa.com[2], s=20, marker='o', color='blue', alpha=0.5)
+        for i in range(0, self.resolution):
+            for j in range(0, self.resolution):
+                for k in range(0, self.resolution):
+                    for n in range(0,1):
+                        ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(features[n,i,j,k], 1.0))
+            #ax.set_xlim3d(-1.0, 1.0)
+            #ax.set_ylim3d(-1.0, 1.0)
+            #ax.set_zlim3d(-1.0, 1.0)
+            #ax.set_xticks(np.arange(-1, 1, step=0.5))
+            #ax.set_yticks(np.arange(-1, 1, step=0.5))
+            #ax.set_zticks(np.arange(-1, 1, step=0.5))
+            #ax.tick_params(labelsize=6)
+            #plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
+        plt.show()
+        """
 
         #print("features", features.dtype)
         #print("target", target.dtype)
@@ -168,6 +191,7 @@ class GAN():
 
         self.n_out = self.ff_cg.n_atoms
         #self.z_and_label_dim = self.z_dim + self.n_atom_chns
+        self.z_dim = int(cfg.getint('model', 'noise_dim'))
 
         self.step = 0
         self.epoch = 0
@@ -199,7 +223,7 @@ class GAN():
         #Model selection
         #if cfg.get('model', 'model_type') == "tiny":
         #    print("Using tiny model")
-        self.generator = model.AtomGen_mid(n_input=self.n_input,
+        self.generator = model.AtomGen_noise(n_input=self.z_dim,
                                             n_output=self.n_out,
                                             start_channels=self.cfg.getint('model', 'n_chns'),
                                             fac=1,
@@ -584,16 +608,16 @@ class GAN():
         #c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
         #prepare input for generator
-        """
+
         z = torch.empty(
-            [target_atom.shape[0], self.z_dim],
+            [features.shape[0], self.z_dim],
             dtype=torch.float32,
             device=self.device,
         ).normal_()
-        """
+
 
         #generate fake atom
-        fake_mol = self.generator(features)
+        fake_mol = self.generator(z)
 
         #fake_data = torch.cat([fake_atom, features], dim=1)
         #real_data = torch.cat([target_atom[:, None, :, :, :], features], dim=1)
@@ -624,16 +648,16 @@ class GAN():
 
         #g_wass = torch.zeros([], dtype=torch.float32, device=self.device)
 
-        """
+
         z = torch.empty(
-            [target_atom.shape[0], self.z_dim],
+            [features.shape[0], self.z_dim],
             dtype=torch.float32,
             device=self.device,
         ).normal_()
-        """
+
 
         #generate fake atom
-        fake_mol = self.generator(features)
+        fake_mol = self.generator(z)
 
         #critic
         #critic_fake = self.critic(torch.cat([fake_atom, features], dim=1))

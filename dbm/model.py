@@ -23,6 +23,83 @@ def _sn_to_specnorm(sn: int):
 
 
 
+class EmbedNoise(nn.Module):
+    def __init__(self, z_dim, channels, sn=0):
+        super().__init__()
+        specnorm = _sn_to_specnorm(sn)
+        self.pad = nn.Linear(z_dim, channels * 4 * 4 * 4)
+        self.pad = specnorm(self.pad)
+        # self.pad = nn.ConstantPad3d(padding=(3, 3, 3, 3, 3, 3), value=0.)  # -> (B, z_dim, 7, 7, 7)
+        # self.conv = nn.Conv3d(z_dim, channels, kernel_size=4, stride=1, padding=0)  # -> (B, channels, 4, 4, 4)
+        self.nonlin = nn.LeakyReLU()
+        self.z_dim = z_dim
+        self.channels = channels
+
+    def forward(self, z):
+        # batch_size = z.shape[0]
+        out = self.pad(z)
+        # out = self.conv(out.view((-1, self.z_dim, 7, 7, 7)))
+        out = self.nonlin(out)
+        out = out.view((-1, self.channels, 4, 4, 4))
+        return out
+
+
+class AtomGen_noise(nn.Module):
+    def __init__(
+        self,
+        n_input,
+        n_output,
+        start_channels,
+        fac=1,
+        sn: int = 0,
+        device=None,
+    ):
+        super().__init__()
+        specnorm = _sn_to_specnorm(sn)
+
+        self.embed_noise = EmbedNoise(n_input, _facify(start_channels * 2, fac), sn=sn)
+
+        conv_blocks = [
+            specnorm(
+                nn.Conv3d(
+                    in_channels=start_channels * 2,
+                    out_channels=_facify(start_channels, fac),
+                    kernel_size=5,
+                    stride=1,
+                    padding=2,
+                )
+            ),
+            nn.GroupNorm(1, num_channels=_facify(start_channels, fac)),
+            nn.LeakyReLU(),
+            specnorm(
+                nn.Conv3d(
+                    in_channels=start_channels,
+                    out_channels=_facify(start_channels/2, fac),
+                    kernel_size=3,
+                    stride=1,
+                    padding=compute_same_padding(3, 1, 1)
+                )
+            ),
+            nn.GroupNorm(1, num_channels=_facify(start_channels/2, fac)),
+            nn.LeakyReLU(),
+
+            specnorm(nn.Conv3d(_facify(start_channels / 2, fac), n_output, kernel_size=1, stride=1)),
+            nn.Sigmoid(),
+
+
+        ]
+        self.conv = nn.Sequential(*tuple(conv_blocks)).to(device=device)
+
+    def forward(self, inputs):
+        #z_l = torch.cat((z, l), dim=1)
+        out = self.embed_noise(inputs)
+        out = out.repeat(1, 1, 2, 2, 2)
+        out = self.conv(out)
+
+        return out
+
+
+
 class AtomGen_tiny(nn.Module):
     def __init__(
         self,
