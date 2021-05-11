@@ -99,7 +99,7 @@ class AtomGen_mid(nn.Module):
             nn.LeakyReLU(),
             specnorm(
                 nn.Conv3d(
-                    in_channels=start_channels,
+                    in_channels=_facify(start_channels, fac),
                     out_channels=_facify(start_channels/2, fac),
                     kernel_size=3,
                     stride=1,
@@ -111,7 +111,7 @@ class AtomGen_mid(nn.Module):
 
             specnorm(
                 nn.Conv3d(
-                    in_channels=start_channels,
+                    in_channels=_facify(start_channels/2, fac),
                     out_channels=_facify(start_channels / 2, fac),
                     kernel_size=3,
                     stride=1,
@@ -123,7 +123,7 @@ class AtomGen_mid(nn.Module):
 
             specnorm(
                 nn.Conv3d(
-                    in_channels=start_channels,
+                    in_channels=_facify(start_channels/2, fac),
                     out_channels=_facify(start_channels / 2, fac),
                     kernel_size=3,
                     stride=1,
@@ -135,7 +135,7 @@ class AtomGen_mid(nn.Module):
 
             specnorm(
                 nn.Conv3d(
-                    in_channels=start_channels,
+                    in_channels=_facify(start_channels/2, fac),
                     out_channels=_facify(start_channels / 2, fac),
                     kernel_size=3,
                     stride=1,

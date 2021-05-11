@@ -644,12 +644,12 @@ class GAN():
         #loss
         g_wass = self.generator_loss(fake_mol)
         g_overlap = self.overlap_loss(features, fake_mol)
-        #if self.use_ol:
-        #    g_loss = g_wass + self.ol_weight * g_overlap
-        #else:
-        #    g_loss = g_wass
+        if self.use_ol:
+            g_loss = g_wass + self.ol_weight * g_overlap
+        else:
+            g_loss = g_wass
 
-        g_loss = g_overlap
+        #g_loss = g_overlap
 
         #real_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, target_atom[:, None, :, :, :])
         #fake_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, fake_atom)
@@ -657,8 +657,8 @@ class GAN():
         e_bond_cg, e_angle_cg, e_dih_cg, e_lj_cg = self.get_energies_cg(fake_mol, energy_ndx_cg)
         e_bond_aa, e_angle_aa, e_dih_aa, e_lj_aa = self.get_energies_aa(aa_coords_intra, aa_coords, energy_ndx_aa)
 
-        if 1:
-            g_loss += e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg
+        #if 1:
+        #    g_loss += e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg
 
         #g_loss = g_wass + self.prior_weight() * energy_loss
         #g_loss = g_wass
