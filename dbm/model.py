@@ -73,7 +73,90 @@ class AtomGen_tiny(nn.Module):
         return out
 
 
+class AtomGen_mid(nn.Module):
+    def __init__(
+        self,
+        n_input,
+        n_output,
+        start_channels,
+        fac=1,
+        sn: int = 0,
+        device=None,
+    ):
+        super().__init__()
+        specnorm = _sn_to_specnorm(sn)
+        conv_blocks = [
+            specnorm(
+                nn.Conv3d(
+                    in_channels=n_input,
+                    out_channels=_facify(start_channels, fac),
+                    kernel_size=5,
+                    stride=1,
+                    padding=2,
+                )
+            ),
+            nn.GroupNorm(1, num_channels=_facify(start_channels, fac)),
+            nn.LeakyReLU(),
+            specnorm(
+                nn.Conv3d(
+                    in_channels=start_channels,
+                    out_channels=_facify(start_channels/2, fac),
+                    kernel_size=3,
+                    stride=1,
+                    padding=compute_same_padding(3, 1, 1)
+                )
+            ),
+            nn.GroupNorm(1, num_channels=_facify(start_channels/2, fac)),
+            nn.LeakyReLU(),
 
+            specnorm(
+                nn.Conv3d(
+                    in_channels=start_channels,
+                    out_channels=_facify(start_channels / 2, fac),
+                    kernel_size=3,
+                    stride=1,
+                    padding=compute_same_padding(3, 1, 1)
+                )
+            ),
+            nn.GroupNorm(1, num_channels=_facify(start_channels / 2, fac)),
+            nn.LeakyReLU(),
+
+            specnorm(
+                nn.Conv3d(
+                    in_channels=start_channels,
+                    out_channels=_facify(start_channels / 2, fac),
+                    kernel_size=3,
+                    stride=1,
+                    padding=compute_same_padding(3, 1, 1)
+                )
+            ),
+            nn.GroupNorm(1, num_channels=_facify(start_channels / 2, fac)),
+            nn.LeakyReLU(),
+
+            specnorm(
+                nn.Conv3d(
+                    in_channels=start_channels,
+                    out_channels=_facify(start_channels / 2, fac),
+                    kernel_size=3,
+                    stride=1,
+                    padding=compute_same_padding(3, 1, 1)
+                )
+            ),
+            nn.GroupNorm(1, num_channels=_facify(start_channels / 2, fac)),
+            nn.LeakyReLU(),
+
+            specnorm(nn.Conv3d(_facify(start_channels / 2, fac), n_output, kernel_size=1, stride=1)),
+            nn.Sigmoid(),
+
+
+        ]
+        self.conv = nn.Sequential(*tuple(conv_blocks)).to(device=device)
+
+    def forward(self, inputs):
+        #z_l = torch.cat((z, l), dim=1)
+        out = self.conv(inputs)
+
+        return out
 
 class AtomCrit_tiny(nn.Module):
     def __init__(

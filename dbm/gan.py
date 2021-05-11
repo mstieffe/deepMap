@@ -199,7 +199,7 @@ class GAN():
         #Model selection
         #if cfg.get('model', 'model_type') == "tiny":
         #    print("Using tiny model")
-        self.generator = model.AtomGen_tiny(n_input=self.n_input,
+        self.generator = model.AtomGen_mid(n_input=self.n_input,
                                             n_output=self.n_out,
                                             start_channels=self.cfg.getint('model', 'n_chns'),
                                             fac=1,
@@ -230,9 +230,11 @@ class GAN():
         self.generator.to(device=device)
         #self.mse.to(device=device)
 
-        self.opt_generator_pretrain = Adam(self.generator.parameters(), lr=0.00005, betas=(0, 0.9))
-        self.opt_generator = Adam(self.generator.parameters(), lr=0.00005, betas=(0, 0.9))
-        self.opt_critic = Adam(self.critic.parameters(), lr=0.0001, betas=(0, 0.9))
+        lr_gen = cfg.getfloat('training', 'lr_gen')
+        lr_crit = cfg.getfloat('training', 'lr_crit')
+        self.opt_generator_pretrain = Adam(self.generator.parameters(), lr=lr_gen, betas=(0, 0.9))
+        self.opt_generator = Adam(self.generator.parameters(), lr=lr_gen, betas=(0, 0.9))
+        self.opt_critic = Adam(self.critic.parameters(), lr=lr_crit, betas=(0, 0.9))
 
 
         self.restored_model = False
@@ -579,7 +581,7 @@ class GAN():
 
         features, target, _, _ = elems
 
-        c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
+        #c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
         #prepare input for generator
         """
@@ -603,7 +605,7 @@ class GAN():
         #loss
         c_wass = self.critic_loss(critic_real, critic_fake)
         c_eps = self.epsilon_penalty(1e-3, critic_real)
-        c_loss += c_wass + c_eps
+        c_loss = c_wass + c_eps
         if self.use_gp:
             c_gp = self.gradient_penalty(target, fake_mol)
             c_loss += c_gp
