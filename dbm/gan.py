@@ -104,7 +104,7 @@ class DS(Dataset):
         energy_ndx_aa = (d['aa_bond_ndx'], d['aa_ang_ndx'], d['aa_dih_ndx'], d['aa_lj_intra_ndx'], d['aa_lj_ndx'])
         energy_ndx_cg = (d['cg_bond_ndx'], d['cg_ang_ndx'], d['cg_dih_ndx'], d['cg_lj_intra_ndx'],  d['cg_lj_ndx'])
 
-        """
+
         fig = plt.figure(figsize=(20, 20))
         n_chns = 4
         colours = ['red', 'black', 'green', 'blue']
@@ -113,9 +113,9 @@ class DS(Dataset):
         for i in range(0, self.resolution):
             for j in range(0, self.resolution):
                 for k in range(0, self.resolution):
-                    for n in range(0,1):
+                    for n in range(0,2):
                         #ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(target[n,i,j,k], 1.0))
-                        ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=target[n,i,j,k])
+                        ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(features[n,i,j,k], 1.0))
 
             #ax.set_xlim3d(-1.0, 1.0)
             #ax.set_ylim3d(-1.0, 1.0)
@@ -126,7 +126,7 @@ class DS(Dataset):
             #ax.tick_params(labelsize=6)
             #plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
         plt.show()
-        """
+
 
         #print("features", features.dtype)
         #print("target", target.dtype)
@@ -624,6 +624,32 @@ class GAN():
         #generate fake atom
         fake_mol = self.generator(z, features)
 
+
+        """
+        fake_mol2 = fake_mol.detach().cpu().numpy()
+        fig = plt.figure(figsize=(20, 20))
+        n_chns = 4
+        colours = ['red', 'black', 'green', 'blue']
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
+        # ax.scatter(mol_aa.com[0], mol_aa.com[1],mol_aa.com[2], s=20, marker='o', color='blue', alpha=0.5)
+        for i in range(0, 8):
+            for j in range(0, 8):
+                for k in range(0, 8):
+                    for n in range(0,1):
+                        #ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(target[n,i,j,k], 1.0))
+                        ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=fake_mol2[0, n,i,j,k])
+
+            #ax.set_xlim3d(-1.0, 1.0)
+            #ax.set_ylim3d(-1.0, 1.0)
+            #ax.set_zlim3d(-1.0, 1.0)
+            #ax.set_xticks(np.arange(-1, 1, step=0.5))
+            #ax.set_yticks(np.arange(-1, 1, step=0.5))
+            #ax.set_zticks(np.arange(-1, 1, step=0.5))
+            #ax.tick_params(labelsize=6)
+            #plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
+        plt.show()
+        """
+
         #fake_data = torch.cat([fake_atom, features], dim=1)
         #real_data = torch.cat([target_atom[:, None, :, :, :], features], dim=1)
 
@@ -637,7 +663,7 @@ class GAN():
         c_loss += c_wass + c_eps
         if self.use_gp:
             c_gp = self.gradient_penalty(target, fake_mol)
-            c_loss += c_gp
+            c_loss += 10 * c_gp
             #print(c_gp)
 
         self.opt_critic.zero_grad()
