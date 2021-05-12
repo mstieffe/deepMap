@@ -80,6 +80,7 @@ class DS(Dataset):
         aa_features_intra = np.sum(aa_features_intra, 0)
         #aa_features_intra = aa_blobbs_intra
 
+        #print(np.dot(d['cg_positions_intra'], R.T))
         cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
 
         #if d['aa_positions_inter']:
@@ -113,7 +114,9 @@ class DS(Dataset):
             for j in range(0, self.resolution):
                 for k in range(0, self.resolution):
                     for n in range(0,1):
-                        ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(features[n,i,j,k], 1.0))
+                        #ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(target[n,i,j,k], 1.0))
+                        ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=target[n,i,j,k])
+
             #ax.set_xlim3d(-1.0, 1.0)
             #ax.set_ylim3d(-1.0, 1.0)
             #ax.set_zlim3d(-1.0, 1.0)
@@ -223,7 +226,8 @@ class GAN():
         #Model selection
         #if cfg.get('model', 'model_type') == "tiny":
         #    print("Using tiny model")
-        self.generator = model.AtomGen_tiny(n_input=self.n_input,
+        self.generator = model.AtomGen_tiny2(z_dim=self.z_dim,
+                                            n_input=self.n_input,
                                             n_output=self.n_out,
                                             start_channels=self.cfg.getint('model', 'n_chns'),
                                             fac=1,
@@ -609,16 +613,16 @@ class GAN():
 
         #prepare input for generator
 
-        """
+
         z = torch.empty(
             [features.shape[0], self.z_dim],
             dtype=torch.float32,
             device=self.device,
         ).normal_()
-        """
+
 
         #generate fake atom
-        fake_mol = self.generator(features)
+        fake_mol = self.generator(z, features)
 
         #fake_data = torch.cat([fake_atom, features], dim=1)
         #real_data = torch.cat([target_atom[:, None, :, :, :], features], dim=1)
@@ -634,6 +638,7 @@ class GAN():
         if self.use_gp:
             c_gp = self.gradient_penalty(target, fake_mol)
             c_loss += c_gp
+            #print(c_gp)
 
         self.opt_critic.zero_grad()
         c_loss.backward()
@@ -648,17 +653,17 @@ class GAN():
 
         g_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
-        """
+
         z = torch.empty(
             [features.shape[0], self.z_dim],
             dtype=torch.float32,
             device=self.device,
         ).normal_()
-        """
+
 
 
         #generate fake atom
-        fake_mol = self.generator(features)
+        fake_mol = self.generator(z, features)
 
         #critic
         #critic_fake = self.critic(torch.cat([fake_atom, features], dim=1))
