@@ -76,9 +76,9 @@ class DS(Dataset):
 
         aa_coords_intra = np.dot(d['aa_positions_intra'], R.T)
         aa_blobbs_intra = voxelize_gauss(aa_coords_intra, self.sigma_aa, self.grid)
-        #aa_features_intra = d['aa_intra_featvec'][:, :, None, None, None] * aa_blobbs_intra[:, None, :, :, :]
-        #aa_features_intra = np.sum(aa_features_intra, 0)
-        aa_features_intra = aa_blobbs_intra
+        aa_features_intra = d['aa_intra_featvec'][:, :, None, None, None] * aa_blobbs_intra[:, None, :, :, :]
+        aa_features_intra = np.sum(aa_features_intra, 0)
+        #aa_features_intra = aa_blobbs_intra
 
         cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
 
@@ -609,15 +609,16 @@ class GAN():
 
         #prepare input for generator
 
+        """
         z = torch.empty(
             [features.shape[0], self.z_dim],
             dtype=torch.float32,
             device=self.device,
         ).normal_()
-
+        """
 
         #generate fake atom
-        fake_mol = self.generator(z)
+        fake_mol = self.generator(features)
 
         #fake_data = torch.cat([fake_atom, features], dim=1)
         #real_data = torch.cat([target_atom[:, None, :, :, :], features], dim=1)
@@ -645,19 +646,19 @@ class GAN():
 
         features, target, aa_coords_intra, aa_coords = elems
 
-
         g_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
-
+        """
         z = torch.empty(
             [features.shape[0], self.z_dim],
             dtype=torch.float32,
             device=self.device,
         ).normal_()
+        """
 
 
         #generate fake atom
-        fake_mol = self.generator(z)
+        fake_mol = self.generator(features)
 
         #critic
         #critic_fake = self.critic(torch.cat([fake_atom, features], dim=1))
