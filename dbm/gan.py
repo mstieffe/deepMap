@@ -104,7 +104,7 @@ class DS(Dataset):
         energy_ndx_aa = (d['aa_bond_ndx'], d['aa_ang_ndx'], d['aa_dih_ndx'], d['aa_lj_intra_ndx'], d['aa_lj_ndx'])
         energy_ndx_cg = (d['cg_bond_ndx'], d['cg_ang_ndx'], d['cg_dih_ndx'], d['cg_lj_intra_ndx'],  d['cg_lj_ndx'])
 
-
+        """
         fig = plt.figure(figsize=(20, 20))
         n_chns = 4
         colours = ['red', 'black', 'green', 'blue']
@@ -126,7 +126,7 @@ class DS(Dataset):
             #ax.tick_params(labelsize=6)
             #plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
         plt.show()
-
+        """
 
         #print("features", features.dtype)
         #print("target", target.dtype)
@@ -497,7 +497,8 @@ class GAN():
                     #print(g_loss_dict)
                     for key, value in g_loss_dict.items():
                         self.out.add_scalar(key, value, global_step=self.step)
-                    tqdm_train_iterator.set_description('D: {:.2f}, G: {:.2f}, E_cg: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_aa: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}'.format(c_loss,
+                    print("m", c_loss)
+                    tqdm_train_iterator.set_description('AAA BBB CCC DDD: {:.2f}, G: {:.2f}, E_cg: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_aa: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}'.format(c_loss,
                                                                                    g_loss_dict['Generator/wasserstein'],
                                                                                    g_loss_dict['Generator/e_bond_cg'],
                                                                                    g_loss_dict['Generator/e_angle_cg'],
@@ -528,6 +529,7 @@ class GAN():
 
                 else:
                     c_loss = self.train_step_critic(elems)
+                    print("l", c_loss)
                     n += 1
 
             #tqdm.write(g_loss_dict)
@@ -613,7 +615,7 @@ class GAN():
 
         #prepare input for generator
 
-
+        #print(c_loss)
         z = torch.empty(
             [features.shape[0], self.z_dim],
             dtype=torch.float32,
@@ -661,11 +663,15 @@ class GAN():
         c_wass = self.critic_loss(critic_real, critic_fake)
         c_eps = self.epsilon_penalty(1e-3, critic_real)
         c_loss += c_wass + c_eps
+
+        #print(c_loss)
         if self.use_gp:
             c_gp = self.gradient_penalty(target, fake_mol)
             c_loss += 10 * c_gp
             #print(c_gp)
 
+        #print(c_loss)
+        #print("::::::::::")
         self.opt_critic.zero_grad()
         c_loss.backward()
         self.opt_critic.step()
@@ -699,6 +705,7 @@ class GAN():
 
         #loss
         g_wass = self.generator_loss(fake_mol)
+        #print("g_wass", g_wass)
         g_overlap = self.overlap_loss(features, fake_mol)
         if self.use_ol:
             g_loss += g_wass + self.ol_weight * g_overlap
