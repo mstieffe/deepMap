@@ -179,21 +179,16 @@ class GAN():
                 )
             else:
                 self.loader_val = []
-        #self.loader_val = cycle(loader_val)
-        #self.val_data = ds_val.data
-
-        #self.n_gibbs = int(cfg.getint('validate', 'n_gibbs'))
 
         #model
         self.name = cfg.get('model', 'name')
-        #self.z_dim = int(cfg.getint('model', 'noise_dim'))
+
         if int(cfg.getint('universe', 'n_inter_atoms')) != 0:
             self.n_input = self.ff_aa.n_atom_chns * 2
         else:
             self.n_input = self.ff_aa.n_atom_chns
 
         self.n_out = self.ff_cg.n_atoms
-        #self.z_and_label_dim = self.z_dim + self.n_atom_chns
         self.z_dim = int(cfg.getint('model', 'noise_dim'))
 
         self.step = 0
@@ -215,13 +210,9 @@ class GAN():
         prior_schedule = self.cfg.get('prior', 'schedule')
         self.prior_schedule = np.array([0] + [int(v) for v in prior_schedule.split(",")])
 
-        #self.prior_weights = self.get_prior_weights()
         self.ratio_bonded_nonbonded = cfg.getfloat('prior', 'ratio_bonded_nonbonded')
-        #self.lj_weight = cfg.getfloat('training', 'lj_weight')
-        #self.covalent_weight = cfg.getfloat('training', 'covalent_weight')
         self.prior_mode = cfg.get('prior', 'mode')
         print(self.prior_mode)
-        #self.w_prior = torch.tensor(self.prior_weights[self.step], dtype=torch.float32, device=device)
 
         #Model selection
         #if cfg.get('model', 'model_type') == "tiny":
@@ -251,8 +242,6 @@ class GAN():
         self.use_gp = cfg.getboolean('model', 'gp')
         self.use_ol = cfg.getboolean('model', 'ol')
 
-        #self.mse = torch.nn.MSELoss()
-        #self.kld = torch.nn.KLDivLoss(reduction="batchmean")
 
         self.critic.to(device=device)
         self.generator.to(device=device)
@@ -260,10 +249,9 @@ class GAN():
 
         lr_gen = cfg.getfloat('training', 'lr_gen')
         lr_crit = cfg.getfloat('training', 'lr_crit')
-        self.opt_generator_pretrain = Adam(self.generator.parameters(), lr=lr_gen, betas=(0, 0.9))
+        #self.opt_generator_pretrain = Adam(self.generator.parameters(), lr=lr_gen, betas=(0, 0.9))
         self.opt_generator = Adam(self.generator.parameters(), lr=lr_gen, betas=(0, 0.9))
         self.opt_critic = Adam(self.critic.parameters(), lr=lr_crit, betas=(0, 0.9))
-
 
         self.restored_model = False
         self.restore_latest_checkpoint()
@@ -279,34 +267,6 @@ class GAN():
             weight = self.prior_weights[ndx]
 
         return weight
-
-    def get_prior_weights(self):
-        steps_per_epoch = len(self.loader_train)
-        tot_steps = steps_per_epoch * self.cfg.getint('training', 'n_epoch')
-
-        prior_weights = self.cfg.get('training', 'energy_prior_weights')
-        prior_weights = [float(v) for v in prior_weights.split(",")]
-        prior_steps = self.cfg.get('training', 'n_start_prior')
-        prior_steps = [int(v) for v in prior_steps.split(",")]
-        n_trans = self.cfg.getint('training', 'n_prior_transition')
-        weights = []
-        for s in range(self.step, self.step + tot_steps):
-            if s > prior_steps[-1]:
-                ndx = len(prior_weights)-1
-                #weights.append(self.energy_prior_values[-1])
-            else:
-                for n in range(0, len(prior_steps)):
-                    if s < prior_steps[n]:
-                        #weights.append(self.energy_prior_values[n])
-                        ndx = n
-                        break
-            #print(ndx)
-            if ndx > 0 and s < prior_steps[ndx-1] + self.cfg.getint('training', 'n_prior_transition'):
-                weights.append(prior_weights[ndx-1] + (prior_weights[ndx]-prior_weights[ndx-1])*(s-prior_steps[ndx-1])/n_trans)
-            else:
-                weights.append(prior_weights[ndx])
-
-        return weights
 
 
     def make_checkpoint(self):
@@ -340,23 +300,6 @@ class GAN():
     def map_to_device(self, tup):
         return tuple(tuple(y.to(device=self.device) for y in x) if type(x) is list else x.to(device=self.device) for x in tup)
 
-    def transpose_and_zip(self, args):
-        args = tuple(torch.transpose(x, 0, 1) for x in args)
-        elems = zip(*args)
-        return elems
-
-    def featurize(self, grid, features):
-        grid = grid[:, :, None, :, :, :] * features[:, :, :, None, None, None]
-        #grid (BS, N_atoms, 1, N_x, N_y, N_z) * features (BS, N_atoms, N_features, 1, 1, 1)
-        return torch.sum(grid, 1)
-
-    def prepare_condition(self, fake_atom_grid, real_atom_grid, aa_featvec, bead_features):
-        fake_aa_features = self.featurize(fake_atom_grid, aa_featvec)
-        real_aa_features = self.featurize(real_atom_grid, aa_featvec)
-        c_fake = fake_aa_features + bead_features
-        c_real = real_aa_features + bead_features
-        return c_fake, c_real
-
     def generator_loss(self, critic_fake):
         return (-1.0 * critic_fake).mean()
 
@@ -368,16 +311,6 @@ class GAN():
 
         overlap_loss = (aa_mol * (aa_mol / cg_mol).log()).sum(1)
         return torch.mean(overlap_loss)
-
-    def overlap_loss2(self, aa_mol, cg_mol):
-        aa_mol = torch.sum(aa_mol, 1)
-        aa_mol = aa_mol / torch.sum(aa_mol, (1, 2, 3), keepdim=True)
-        cg_mol = torch.sum(cg_mol, 1)
-        cg_mol = cg_mol / torch.sum(cg_mol, (1, 2, 3), keepdim=True)
-        overlap_loss = aa_mol * cg_mol
-        overlap_loss = torch.sum(overlap_loss, (1,2,3))
-        overlap_loss = -torch.mean(overlap_loss, 0)
-        return overlap_loss
 
     def critic_loss(self, critic_real, critic_fake):
         loss_on_generated = critic_fake.mean()
@@ -493,12 +426,13 @@ class GAN():
                 elems, energy_ndx_aa, energy_ndx_cg = train_batch
 
                 if n == n_critic:
+                    for key, value in c_loss_dict.items():
+                        self.out.add_scalar(key, value, global_step=self.step)
                     g_loss_dict = self.train_step_gen(elems, energy_ndx_aa, energy_ndx_cg)
-                    #print(g_loss_dict)
                     for key, value in g_loss_dict.items():
                         self.out.add_scalar(key, value, global_step=self.step)
-                    print("m", c_loss)
-                    tqdm_train_iterator.set_description('AAA BBB CCC DDD: {:.2f}, G: {:.2f}, E_cg: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_aa: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}'.format(c_loss,
+                    print(c_loss_dict)
+                    tqdm_train_iterator.set_description('AAA BBB CCC DDD: {:.2f}, G: {:.2f}, E_cg: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_aa: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}'.format(c_loss_dict['Critic/wasserstein'],
                                                                                    g_loss_dict['Generator/wasserstein'],
                                                                                    g_loss_dict['Generator/e_bond_cg'],
                                                                                    g_loss_dict['Generator/e_angle_cg'],
@@ -528,8 +462,8 @@ class GAN():
                     n = 0
 
                 else:
-                    c_loss = self.train_step_critic(elems)
-                    print("l", c_loss)
+                    c_loss_dict = self.train_step_critic(elems)
+                    #print("l", c_loss)
                     n += 1
 
             #tqdm.write(g_loss_dict)
@@ -567,45 +501,54 @@ class GAN():
 
         g = Mol_Generator_AA(self.data, train=False, rand_rot=False)
         all_elems = list(g)
-        for ndx in range(0, len(all_elems), self.bs):
-            with torch.no_grad():
-                batch = all_elems[ndx:min(ndx + self.bs, len(all_elems))]
 
-                aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
-                aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
+        try:
+            self.generator.eval()
+            self.critic.eval()
 
-                mols = np.array([d['aa_mol'] for d in batch])
+            for ndx in range(0, len(all_elems), self.bs):
+                with torch.no_grad():
+                    batch = all_elems[ndx:min(ndx + self.bs, len(all_elems))]
 
-                aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
-                aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma)
+                    aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
+                    aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
 
-                #print(aa_intra_featvec[:, :, :, None, None, None].shape)
-                #print(aa_blobbs_intra[:, :, None, :, :, :].size())
-                features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
-                features = torch.sum(features, 1)
+                    mols = np.array([d['aa_mol'] for d in batch])
 
-                #elems, energy_ndx_aa, energy_ndx_cg = val_batch
-                #features, _, aa_coords_intra, aa_coords = elems
-                fake_mol = self.generator(features)
+                    aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
+                    aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma)
 
-                coords = avg_blob(
-                    fake_mol,
-                    res=self.cfg.getint('grid', 'resolution'),
-                    width=self.cfg.getfloat('grid', 'length'),
-                    sigma=self.cfg.getfloat('grid', 'sigma_cg'),
-                    device=self.device,)
-                for positions, mol in zip(coords, mols):
-                    positions = positions.detach().cpu().numpy()
-                    positions = np.dot(positions, mol.rot_mat.T)
-                    for pos, bead in zip(positions, mol.beads):
-                        bead.pos = pos + mol.com
+                    #print(aa_intra_featvec[:, :, :, None, None, None].shape)
+                    #print(aa_blobbs_intra[:, :, None, :, :, :].size())
+                    features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
+                    features = torch.sum(features, 1)
 
-        samples_dir = self.out.output_dir / "samples"
-        samples_dir.mkdir(exist_ok=True)
+                    #elems, energy_ndx_aa, energy_ndx_cg = val_batch
+                    #features, _, aa_coords_intra, aa_coords = elems
+                    fake_mol = self.generator(features)
 
-        for sample in self.data.samples_val_aa:
-            #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
-            sample.write_gro_file(samples_dir / (sample.name + ".gro"))
+                    coords = avg_blob(
+                        fake_mol,
+                        res=self.cfg.getint('grid', 'resolution'),
+                        width=self.cfg.getfloat('grid', 'length'),
+                        sigma=self.cfg.getfloat('grid', 'sigma_cg'),
+                        device=self.device,)
+                    for positions, mol in zip(coords, mols):
+                        positions = positions.detach().cpu().numpy()
+                        positions = np.dot(positions, mol.rot_mat.T)
+                        for pos, bead in zip(positions, mol.beads):
+                            bead.pos = pos + mol.com
+
+            samples_dir = self.out.output_dir / "samples"
+            samples_dir.mkdir(exist_ok=True)
+
+            for sample in self.data.samples_val_aa:
+                #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
+                sample.write_gro_file(samples_dir / (sample.name + ".gro"))
+        finally:
+            self.generator.train()
+            self.critic.train()
+
 
     def train_step_critic(self, elems):
 
@@ -666,8 +609,8 @@ class GAN():
 
         #print(c_loss)
         if self.use_gp:
-            c_gp = self.gradient_penalty(target, fake_mol)
-            c_loss += 10 * c_gp
+            c_gp = 10.0 * self.gradient_penalty(target, fake_mol)
+            c_loss += c_gp
             #print(c_gp)
 
         #print(c_loss)
@@ -676,7 +619,12 @@ class GAN():
         c_loss.backward()
         self.opt_critic.step()
 
-        return c_loss.detach().cpu().numpy()
+        c_loss_dict = {"Critic/wasserstein": c_wass.detach().cpu().numpy(),
+                       "Critic/eps": c_eps.detach().cpu().numpy(),
+                       "Critic/gp": c_gp.detach().cpu().numpy(),
+                       "Critic/total": c_loss.detach().cpu().numpy()}
+
+        return c_loss_dict
 
 
     def train_step_gen(self, elems, energy_ndx_aa, energy_ndx_cg, backprop=True):
@@ -748,148 +696,8 @@ class GAN():
         return g_loss_dict
 
 
-
-    def to_tensor_and_zip(self, *args):
-        args = tuple(torch.from_numpy(x).float().to(self.device) if x.dtype == np.dtype(np.float64) else torch.from_numpy(x).to(self.device) for x in args)
-        #args = tuple(torch.transpose(x, 0, 1) for x in args)
-        elems = zip(*args)
-        return elems
-
-    def to_tensor(self, t):
-        return tuple(torch.from_numpy(x).to(self.device) for x in t)
-
-    def transpose(self, t):
-        return tuple(torch.transpose(x, 0, 1) for x in t)
-
-    def insert_dim(self, t):
-        return tuple(x[None, :] for x in t)
-
-    def repeat(self, t):
-        return tuple(torch.stack(self.bs*[x]) for x in t)
-
     def to_voxel(self, coords, grid, sigma):
         coords = coords[..., None, None, None]
         return torch.exp(-1.0 * torch.sum((grid - coords) * (grid - coords), axis=2) / sigma).float()
-
-    def predict(self, elems, initial, energy_ndx):
-
-        aa_grid, cg_features = initial
-
-        generated_atoms = []
-        for target_type, aa_featvec, repl in zip(*elems):
-            fake_aa_features = self.featurize(aa_grid, aa_featvec)
-            c_fake = fake_aa_features + cg_features
-            target_type = target_type.repeat(self.bs, 1)
-            z = torch.empty(
-                [target_type.shape[0], self.z_dim],
-                dtype=torch.float32,
-                device=self.device,
-            ).normal_()
-
-            #generate fake atom
-            fake_atom = self.generator(z, target_type, c_fake)
-            generated_atoms.append(fake_atom)
-
-            #update aa grids
-            aa_grid = torch.where(repl[:,:,None,None,None], aa_grid, fake_atom)
-
-        #generated_atoms = torch.stack(generated_atoms, dim=1)
-        generated_atoms = torch.cat(generated_atoms, dim=1)
-
-        generated_atoms_coords = avg_blob(
-            generated_atoms,
-            res=self.cfg.getint('grid', 'resolution'),
-            width=self.cfg.getfloat('grid', 'length'),
-            sigma=self.cfg.getfloat('grid', 'sigma'),
-            device=self.device,
-        )
-
-        b_energy, a_energy, d_energy, l_energy = self.get_energies_from_grid(aa_grid, energy_ndx)
-        energy = b_energy + a_energy + d_energy + l_energy
-
-        return generated_atoms_coords, energy
-
-    def validate(self, samples_dir=None):
-
-        if samples_dir:
-            samples_dir = self.out.output_dir / samples_dir
-            make_dir(samples_dir)
-        else:
-            samples_dir = self.out.samples_dir
-        stats = Stats(self.data, dir= samples_dir / "stats")
-
-        print("Saving samples in {}".format(samples_dir), "...", end='')
-
-        resolution = self.cfg.getint('grid', 'resolution')
-        delta_s = self.cfg.getfloat('grid', 'length') / self.cfg.getint('grid', 'resolution')
-        sigma = self.cfg.getfloat('grid', 'sigma')
-        #grid = make_grid_np(delta_s, resolution)
-
-        grid = torch.from_numpy(make_grid_np(delta_s, resolution)).to(self.device)
-        rot_mtxs = torch.from_numpy(rot_mtx_batch(self.bs)).to(self.device).float()
-        rot_mtxs_transposed = torch.from_numpy(rot_mtx_batch(self.bs, transpose=True)).to(self.device).float()
-
-        data_generators = []
-        data_generators.append(iter(Recurrent_Generator(self.data, hydrogens=False, gibbs=False, train=False, rand_rot=False, pad_seq=False, ref_pos=False)))
-        data_generators.append(iter(Recurrent_Generator(self.data, hydrogens=True, gibbs=False, train=False, rand_rot=False, pad_seq=False, ref_pos=False)))
-
-        for m in range(self.n_gibbs):
-            data_generators.append(iter(Recurrent_Generator(self.data, hydrogens=False, gibbs=True, train=False, rand_rot=False, pad_seq=False, ref_pos=False)))
-            data_generators.append(iter(Recurrent_Generator(self.data, hydrogens=True, gibbs=True, train=False, rand_rot=False, pad_seq=False, ref_pos=False)))
-
-        try:
-            self.generator.eval()
-            self.critic.eval()
-
-            for data_gen in data_generators:
-                start = timer()
-
-                for d in data_gen:
-                    with torch.no_grad():
-
-                        aa_coords = torch.matmul(torch.from_numpy(d['aa_pos']).to(self.device).float(), rot_mtxs)
-                        cg_coords = torch.matmul(torch.from_numpy(d['cg_pos']).to(self.device).float(), rot_mtxs)
-
-                        #aa_coords = torch.from_numpy(d['aa_pos']).to(self.device).float()
-                        #cg_coords = torch.from_numpy(d['cg_pos']).to(self.device).float()
-
-                        aa_grid = self.to_voxel(aa_coords, grid, sigma)
-                        cg_grid = self.to_voxel(cg_coords, grid, sigma)
-
-                        cg_features = torch.from_numpy(d['cg_feat'][None, :, :, None, None, None]).to(self.device) * cg_grid[:, :, None, :, :, :]
-                        cg_features = torch.sum(cg_features, 1)
-
-                        initial = (aa_grid, cg_features)
-
-                        elems = (d['target_type'], d['aa_feat'], d['repl'])
-                        elems = self.transpose(self.insert_dim(self.to_tensor(elems)))
-
-                        energy_ndx = (d['bonds_ndx'], d['angles_ndx'], d['dihs_ndx'], d['ljs_ndx'])
-                        energy_ndx = self.repeat(self.to_tensor(energy_ndx))
-
-                        new_coords, energies = self.predict(elems, initial, energy_ndx)
-
-                        ndx = energies.argmin()
-
-                        new_coords = torch.matmul(new_coords[ndx], rot_mtxs_transposed[ndx])
-                        #new_coords = new_coords[ndx]
-                        new_coords = new_coords.detach().cpu().numpy()
-
-                        for c, a in zip(new_coords, d['atom_seq']):
-
-                            a.pos = d['loc_env'].rot_back(c)
-                            #a.ref_pos = d['loc_env'].rot_back(c)
-
-                print(timer()-start)
-            stats.evaluate(train=False, subdir=str(self.epoch), save_samples=True)
-            #reset atom positions
-            for sample in self.data.samples_val:
-                #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
-                sample.kick_atoms()
-
-        finally:
-            self.generator.train()
-            self.critic.train()
-
 
 
