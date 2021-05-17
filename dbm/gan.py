@@ -217,26 +217,39 @@ class GAN():
         #Model selection
         #if cfg.get('model', 'model_type') == "tiny":
         #    print("Using tiny model")
-        self.generator = model.AtomGen_tiny2(z_dim=self.z_dim,
-                                            n_input=self.n_input,
+        if self.z_dim != 0:
+            self.generator = model.G_tiny_with_noise(z_dim=self.z_dim,
+                                                n_input=self.n_input,
+                                                n_output=self.n_out,
+                                                start_channels=self.cfg.getint('model', 'n_chns'),
+                                                fac=1,
+                                                sn=self.cfg.getint('model', 'sn_gen'),
+                                                device=device)
+            print("Using tiny generator with noise")
+        else:
+            self.generator = model.G_tiny(n_input=self.n_input,
                                             n_output=self.n_out,
                                             start_channels=self.cfg.getint('model', 'n_chns'),
                                             fac=1,
                                             sn=self.cfg.getint('model', 'sn_gen'),
                                             device=device)
+            print("Using tiny generator without noise")
 
         if cfg.getint('grid', 'resolution') == 8:
-            self.critic = model.AtomCrit_tiny(in_channels=self.n_out,
+            self.critic = model.C_tiny(in_channels=self.n_out,
                                               start_channels=self.cfg.getint('model', 'n_chns'),
                                               fac=1, sn=self.cfg.getint('model', 'sn_crit'),
                                               device=device)
+            print("Using tiny critic with resolution 8")
+
 
         else:
-            self.critic = model.AtomCrit_tiny16(in_channels=self.n_out,
+            self.critic = model.C_tiny16(in_channels=self.n_out,
                                               start_channels=self.cfg.getint('model', 'n_chns'),
                                               fac=1, sn=self.cfg.getint('model', 'sn_crit'),
                                               device=device)
 
+            print("Using tiny critic with resolution 16")
 
 
         self.use_gp = cfg.getboolean('model', 'gp')
@@ -495,8 +508,10 @@ class GAN():
 
     def val(self):
         resolution = self.cfg.getint('grid', 'resolution')
+        grid_length = self.cfg.getfloat('grid', 'length')
         delta_s = self.cfg.getfloat('grid', 'length') / self.cfg.getint('grid', 'resolution')
-        sigma = self.cfg.getfloat('grid', 'sigma_cg')
+        sigma_aa = self.cfg.getfloat('grid', 'sigma_aa')
+        sigma_cg = self.cfg.getfloat('grid', 'sigma_cg')
         grid = torch.from_numpy(make_grid_np(delta_s, resolution)).to(self.device)
 
         g = Mol_Generator_AA(self.data, train=False, rand_rot=False)
@@ -516,7 +531,7 @@ class GAN():
                     mols = np.array([d['aa_mol'] for d in batch])
 
                     aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
-                    aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma)
+                    aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma_aa)
 
                     #print(aa_intra_featvec[:, :, :, None, None, None].shape)
                     #print(aa_blobbs_intra[:, :, None, :, :, :].size())
@@ -525,13 +540,22 @@ class GAN():
 
                     #elems, energy_ndx_aa, energy_ndx_cg = val_batch
                     #features, _, aa_coords_intra, aa_coords = elems
-                    fake_mol = self.generator(features)
+                    if self.z_dim != 0:
+                        z = torch.empty(
+                            [features.shape[0], self.z_dim],
+                            dtype=torch.float32,
+                            device=self.device,
+                        ).normal_()
+
+                        fake_mol = self.generator(z, features)
+                    else:
+                        fake_mol = self.generator(features)
 
                     coords = avg_blob(
                         fake_mol,
-                        res=self.cfg.getint('grid', 'resolution'),
-                        width=self.cfg.getfloat('grid', 'length'),
-                        sigma=self.cfg.getfloat('grid', 'sigma_cg'),
+                        res=resolution,
+                        width=grid_length,
+                        sigma=sigma_cg,
                         device=self.device,)
                     for positions, mol in zip(coords, mols):
                         positions = positions.detach().cpu().numpy()
@@ -554,20 +578,18 @@ class GAN():
 
         features, target, _, _ = elems
 
-        c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
+        #c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
-        #prepare input for generator
+        if self.z_dim != 0:
+            z = torch.empty(
+                [features.shape[0], self.z_dim],
+                dtype=torch.float32,
+                device=self.device,
+            ).normal_()
 
-        #print(c_loss)
-        z = torch.empty(
-            [features.shape[0], self.z_dim],
-            dtype=torch.float32,
-            device=self.device,
-        ).normal_()
-
-
-        #generate fake atom
-        fake_mol = self.generator(z, features)
+            fake_mol = self.generator(z, features)
+        else:
+            fake_mol = self.generator(features)
 
 
         """
@@ -602,16 +624,17 @@ class GAN():
         critic_fake = self.critic(fake_mol)
         critic_real = self.critic(target)
 
+        loss_on_generated = critic_fake.mean()
+        loss_on_real = critic_real.mean()
+
         #loss
         c_wass = self.critic_loss(critic_real, critic_fake)
         c_eps = self.epsilon_penalty(1e-3, critic_real)
-        c_loss += c_wass + c_eps
+        c_loss = c_wass + c_eps
 
-        #print(c_loss)
+        c_gp = 10.0 * self.gradient_penalty(target, fake_mol)
         if self.use_gp:
-            c_gp = 10.0 * self.gradient_penalty(target, fake_mol)
             c_loss += c_gp
-            #print(c_gp)
 
         #print(c_loss)
         #print("::::::::::")
@@ -622,7 +645,10 @@ class GAN():
         c_loss_dict = {"Critic/wasserstein": c_wass.detach().cpu().numpy(),
                        "Critic/eps": c_eps.detach().cpu().numpy(),
                        "Critic/gp": c_gp.detach().cpu().numpy(),
-                       "Critic/total": c_loss.detach().cpu().numpy()}
+                       "Critic/total": c_loss.detach().cpu().numpy(),
+                       "Critic/loss_on_generated": loss_on_generated.detach().cpu().numpy(),
+                       "Critic/loss_on_real": loss_on_real.detach().cpu().numpy()
+                       }
 
         return c_loss_dict
 
@@ -633,26 +659,21 @@ class GAN():
 
         g_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
+        if self.z_dim != 0:
+            z = torch.empty(
+                [features.shape[0], self.z_dim],
+                dtype=torch.float32,
+                device=self.device,
+            ).normal_()
 
-        z = torch.empty(
-            [features.shape[0], self.z_dim],
-            dtype=torch.float32,
-            device=self.device,
-        ).normal_()
+            fake_mol = self.generator(z, features)
+        else:
+            fake_mol = self.generator(features)
 
-
-
-        #generate fake atom
-        fake_mol = self.generator(z, features)
-
-        #critic
-        #critic_fake = self.critic(torch.cat([fake_atom, features], dim=1))
-
-        #mask
-        #critic_fake = torch.squeeze(critic_fake)
+        critic_fake = self.critic(fake_mol)
 
         #loss
-        g_wass = self.generator_loss(fake_mol)
+        g_wass = self.generator_loss(critic_fake)
         #print("g_wass", g_wass)
         g_overlap = self.overlap_loss(features, fake_mol)
         if self.use_ol:

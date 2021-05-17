@@ -44,63 +44,7 @@ class EmbedNoise(nn.Module):
         return out
 
 
-class AtomGen_noise(nn.Module):
-    def __init__(
-        self,
-        n_input,
-        n_output,
-        start_channels,
-        fac=1,
-        sn: int = 0,
-        device=None,
-    ):
-        super().__init__()
-        specnorm = _sn_to_specnorm(sn)
-
-        self.embed_noise = EmbedNoise(n_input, _facify(start_channels * 2, fac), sn=sn)
-
-        conv_blocks = [
-            specnorm(
-                nn.Conv3d(
-                    in_channels=start_channels * 2,
-                    out_channels=_facify(start_channels, fac),
-                    kernel_size=5,
-                    stride=1,
-                    padding=2,
-                )
-            ),
-            nn.GroupNorm(1, num_channels=_facify(start_channels, fac)),
-            nn.LeakyReLU(),
-            specnorm(
-                nn.Conv3d(
-                    in_channels=start_channels,
-                    out_channels=_facify(start_channels/2, fac),
-                    kernel_size=3,
-                    stride=1,
-                    padding=compute_same_padding(3, 1, 1)
-                )
-            ),
-            nn.GroupNorm(1, num_channels=_facify(start_channels/2, fac)),
-            nn.LeakyReLU(),
-
-            specnorm(nn.Conv3d(_facify(start_channels / 2, fac), n_output, kernel_size=1, stride=1)),
-            nn.Sigmoid(),
-
-
-        ]
-        self.conv = nn.Sequential(*tuple(conv_blocks)).to(device=device)
-
-    def forward(self, inputs):
-        #z_l = torch.cat((z, l), dim=1)
-        out = self.embed_noise(inputs)
-        out = out.repeat(1, 1, 2, 2, 2)
-        out = self.conv(out)
-
-        return out
-
-
-
-class AtomGen_tiny2(nn.Module):
+class G_tiny_with_noise(nn.Module):
     def __init__(
         self,
         z_dim,
@@ -233,7 +177,7 @@ class AtomGen_tiny2(nn.Module):
         return out
 
 
-class AtomGen_tiny(nn.Module):
+class G_tiny(nn.Module):
     def __init__(
         self,
         n_input,
@@ -283,7 +227,7 @@ class AtomGen_tiny(nn.Module):
         return out
 
 
-class AtomGen_mid(nn.Module):
+class G_mid(nn.Module):
     def __init__(
         self,
         n_input,
@@ -368,7 +312,7 @@ class AtomGen_mid(nn.Module):
 
         return out
 
-class AtomCrit_tiny(nn.Module):
+class C_tiny(nn.Module):
     def __init__(
         self, in_channels, start_channels, fac=1, sn: int = 0, device=None
     ):
@@ -444,7 +388,7 @@ class AtomCrit_tiny(nn.Module):
         return out
 
 
-class AtomCrit_tiny16(nn.Module):
+class C_tiny16(nn.Module):
     def __init__(
         self, in_channels, start_channels, fac=1, sn: int = 0, device=None
     ):
