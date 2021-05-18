@@ -41,7 +41,7 @@ class DS(Dataset):
 
         self.data = data
         self.train = train
-        self.n_interatoms = int(cfg.getint('universe', 'n_inter_atoms'))
+        self.n_inter_mols = int(cfg.getint('universe', 'n_inter_mols'))
 
         g = Mol_Generator(data, train=train, rand_rot=False)
 
@@ -84,7 +84,8 @@ class DS(Dataset):
         cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
 
         #if d['aa_positions_inter']:
-        if self.n_interatoms:
+        if self.n_inter_mols:
+            #print(len(d['aa_positions_inter']))
             aa_coords_inter = np.dot(d['aa_positions_inter'], R.T)
             aa_coords = np.concatenate((aa_coords_intra, aa_coords_inter), 0)
             aa_blobbs_inter = voxelize_gauss(aa_coords_inter, self.sigma_aa, self.grid)
@@ -96,10 +97,14 @@ class DS(Dataset):
             features = aa_features_intra
             aa_coords = aa_coords_intra
 
-        if self.n_interatoms:
-            cg_positions_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
+        if self.n_inter_mols:
+            #print(len(d['cg_positions_inter']))
 
-        target = cg_positions_intra
+            cg_positions_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
+            cg_features_inter = np.sum(cg_positions_inter, 0, keepdims=True)
+            target = np.concatenate((cg_positions_intra, cg_features_inter), 0)
+        else:
+            target = cg_positions_intra
 
         energy_ndx_aa = (d['aa_bond_ndx'], d['aa_ang_ndx'], d['aa_dih_ndx'], d['aa_lj_intra_ndx'], d['aa_lj_ndx'])
         energy_ndx_cg = (d['cg_bond_ndx'], d['cg_ang_ndx'], d['cg_dih_ndx'], d['cg_lj_intra_ndx'],  d['cg_lj_ndx'])
@@ -183,12 +188,17 @@ class GAN():
         #model
         self.name = cfg.get('model', 'name')
 
-        if int(cfg.getint('universe', 'n_inter_atoms')) != 0:
+        self.n_inter_mols = int(cfg.getint('universe', 'n_inter_mols'))
+
+
+        if self.n_inter_mols:
             self.n_input = self.ff_aa.n_atom_chns * 2
+            self.n_out = self.ff_cg.n_atoms + 1
+
         else:
             self.n_input = self.ff_aa.n_atom_chns
+            self.n_out = self.ff_cg.n_atoms
 
-        self.n_out = self.ff_cg.n_atoms
         self.z_dim = int(cfg.getint('model', 'noise_dim'))
 
         self.step = 0
@@ -538,6 +548,15 @@ class GAN():
                     features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
                     features = torch.sum(features, 1)
 
+                    if self.n_inter_mols:
+                        aa_positions_inter = np.array([d['aa_positions_inter'] for d in batch])
+                        aa_inter_featvec = np.array([d['aa_inter_featvec'] for d in batch])
+                        aa_positions_inter = torch.from_numpy(aa_positions_inter).to(self.device).float()
+                        aa_blobbs_inter = self.to_voxel(aa_positions_inter, grid, sigma_aa)
+                        features_inter = torch.from_numpy(aa_inter_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_inter[:, :, None, :, :, :]
+                        features_inter = torch.sum(features_inter, 1)
+                        features = torch.cat((features, features_inter), 1)
+
                     #elems, energy_ndx_aa, energy_ndx_cg = val_batch
                     #features, _, aa_coords_intra, aa_coords = elems
                     if self.z_dim != 0:
@@ -551,6 +570,7 @@ class GAN():
                     else:
                         fake_mol = self.generator(features)
 
+                    fake_mol = fake_mol[:, :self.ff_cg.n_atoms]
                     coords = avg_blob(
                         fake_mol,
                         res=resolution,
@@ -671,11 +691,10 @@ class GAN():
             fake_mol = self.generator(features)
 
         critic_fake = self.critic(fake_mol)
-
         #loss
         g_wass = self.generator_loss(critic_fake)
         #print("g_wass", g_wass)
-        g_overlap = self.overlap_loss(features, fake_mol)
+        g_overlap = self.overlap_loss(features[:, :self.ff_aa.n_atom_chns], fake_mol[:, :self.ff_cg.n_atoms])
         if self.use_ol:
             g_loss += g_wass + self.ol_weight * g_overlap
         else:

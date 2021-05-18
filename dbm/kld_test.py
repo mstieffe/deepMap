@@ -323,7 +323,7 @@ class GAN():
         cg_mol = cg_mol / torch.sum(cg_mol, 1, keepdim=True)
 
         overlap_loss = (aa_mol * (aa_mol / cg_mol).log()).sum(1)
-        return torch.mean(overlap_loss)
+        return overlap_loss
 
     def critic_loss(self, critic_real, critic_fake):
         loss_on_generated = critic_fake.mean()
@@ -428,83 +428,27 @@ class GAN():
         
         epochs = tqdm(range(self.epoch, self.cfg.getint('training', 'n_epoch')))
         epochs.set_description('epoch: ')
-        for epoch in epochs:
-            n = 0
-            #loss_epoch = [[]]*11
-            val_iterator = iter(self.loader_val)
-            tqdm_train_iterator = tqdm(self.loader_train, total=steps_per_epoch, leave=False)
-            for train_batch in tqdm_train_iterator:
+        #loss_epoch = [[]]*11
 
-                train_batch = self.map_to_device(train_batch)
-                elems, energy_ndx_aa, energy_ndx_cg = train_batch
+        batch = next(self.loader_train)
+        train_batch = self.map_to_device(train_batch)
+        elems, energy_ndx_aa, energy_ndx_cg = train_batch
+        features, target, _, _ = elems
 
-                if n == n_critic:
-                    for key, value in c_loss_dict.items():
-                        self.out.add_scalar(key, value, global_step=self.step)
-                    g_loss_dict = self.train_step_gen(elems, energy_ndx_aa, energy_ndx_cg)
-                    for key, value in g_loss_dict.items():
-                        self.out.add_scalar(key, value, global_step=self.step)
-                    #print(c_loss_dict)
-                    tqdm_train_iterator.set_description('D: {:.2f}, G: {:.2f}, E_cg: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_aa: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}'.format(c_loss_dict['Critic/wasserstein'],
-                                                                                   g_loss_dict['Generator/wasserstein'],
-                                                                                   g_loss_dict['Generator/e_bond_cg'],
-                                                                                   g_loss_dict['Generator/e_angle_cg'],
-                                                                                   g_loss_dict['Generator/e_dih_cg'],
-                                                                                   g_loss_dict['Generator/e_lj_cg'],
-                                                                                   g_loss_dict['Generator/e_bond_aa'],
-                                                                                   g_loss_dict['Generator/e_angle_aa'],
-                                                                                   g_loss_dict['Generator/e_dih_aa'],
-                                                                                   g_loss_dict['Generator/e_lj_aa'],
-                                                                                   g_loss_dict['Generator/overlap']))
+        target = target[0:1]
+        print(target.size())
 
-                    #for value, l in zip([c_loss] + list(g_loss_dict.values()), loss_epoch):
-                    #    l.append(value)
+        tqdm_train_iterator = tqdm(self.loader_train, total=steps_per_epoch, leave=False)
+        for train_batch in tqdm_train_iterator:
 
-                    if self.loader_val:
-                        try:
-                            val_batch = next(val_iterator)
-                        except StopIteration:
-                            val_iterator = iter(self.loader_val)
-                            val_batch = next(val_iterator)
-                        val_batch = self.map_to_device(val_batch)
-                        elems, energy_ndx_aa, energy_ndx_cg = val_batch
-                        g_loss_dict = self.train_step_gen(elems, energy_ndx_aa, energy_ndx_cg, backprop=False)
-                        for key, value in g_loss_dict.items():
-                            self.out.add_scalar(key, value, global_step=self.step, mode='val')
-                    self.step += 1
-                    n = 0
+            train_batch = self.map_to_device(train_batch)
+            elems, energy_ndx_aa, energy_ndx_cg = train_batch
 
-                else:
-                    c_loss_dict = self.train_step_critic(elems)
-                    #print("l", c_loss)
-                    n += 1
-
-            #tqdm.write(g_loss_dict)
-            """
-            tqdm.write('epoch {} steps {} : D: {} G: {}, E_cg: {}, {}, {}, {}, E_aa: {}, {}, {}, {}, OL: {}'.format(
-                self.epoch,
-                self.step,
-                sum(loss_epoch[0]) / len(loss_epoch[0]),
-                sum(loss_epoch[1]) / len(loss_epoch[1]),
-                sum(loss_epoch[2]) / len(loss_epoch[2]),
-                sum(loss_epoch[3]) / len(loss_epoch[3]),
-                sum(loss_epoch[4]) / len(loss_epoch[4]),
-                sum(loss_epoch[5]) / len(loss_epoch[5]),
-                sum(loss_epoch[6]) / len(loss_epoch[6]),
-                sum(loss_epoch[7]) / len(loss_epoch[7]),
-                sum(loss_epoch[8]) / len(loss_epoch[8]),
-                sum(loss_epoch[9]) / len(loss_epoch[9]),
-                sum(loss_epoch[10]) / len(loss_epoch[10]),
-
-            ))
-            """
-
-            self.epoch += 1
-
-            if self.epoch % n_save == 0:
-                self.make_checkpoint()
-                self.out.prune_checkpoints()
-                self.val()
+            features, _, _, _ = elems
+            print(features.size())
+            print(target.size())
+            ol = self.overlap_loss(features, target)
+            print(ol)
 
     def val(self):
         resolution = self.cfg.getint('grid', 'resolution')
@@ -514,207 +458,75 @@ class GAN():
         sigma_cg = self.cfg.getfloat('grid', 'sigma_cg')
         grid = torch.from_numpy(make_grid_np(delta_s, resolution)).to(self.device)
 
-        g = Mol_Generator_AA(self.data, train=False, rand_rot=False)
+        g = Mol_Generator(self.data, train=True, rand_rot=False)
         all_elems = list(g)
 
+        print("jetzt gehts los")
+        n = 0
         try:
             self.generator.eval()
             self.critic.eval()
+            print("oha")
+            for g in all_elems:
+                mol = g['aa_mol']
 
-            for ndx in range(0, len(all_elems), self.bs):
-                with torch.no_grad():
-                    batch = all_elems[ndx:min(ndx + self.bs, len(all_elems))]
+                aa_positions_intra = np.array([g['aa_positions_intra']])
+                aa_intra_featvec = np.array([g['aa_intra_featvec']])
 
-                    aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
-                    aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
+                aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
+                aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma_aa)
 
-                    mols = np.array([d['aa_mol'] for d in batch])
+                # print(aa_intra_featvec[:, :, :, None, None, None].shape)
+                # print(aa_blobbs_intra[:, :, None, :, :, :].size())
+                features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(
+                    self.device) * aa_blobbs_intra[:, :, None, :, :, :]
+                features = torch.sum(features, 1)
 
-                    aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
-                    aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma_aa)
+                ol_min_glob = 100.0
+                print(n)
+                for ndx in range(0, len(all_elems), self.bs):
+                    with torch.no_grad():
+                        batch = all_elems[ndx:min(ndx + self.bs, len(all_elems))]
 
-                    #print(aa_intra_featvec[:, :, :, None, None, None].shape)
-                    #print(aa_blobbs_intra[:, :, None, :, :, :].size())
-                    features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
-                    features = torch.sum(features, 1)
+                        #print(batch)
 
-                    #elems, energy_ndx_aa, energy_ndx_cg = val_batch
-                    #features, _, aa_coords_intra, aa_coords = elems
-                    if self.z_dim != 0:
-                        z = torch.empty(
-                            [features.shape[0], self.z_dim],
-                            dtype=torch.float32,
-                            device=self.device,
-                        ).normal_()
+                        cg_positions_intra = np.array([d['cg_positions_intra'] for d in batch])
+                        cg_positions_intra = torch.from_numpy(cg_positions_intra).to(self.device).float()
+                        target = self.to_voxel(cg_positions_intra, grid, sigma_cg)
 
-                        fake_mol = self.generator(z, features)
-                    else:
-                        fake_mol = self.generator(features)
+                        ol = self.overlap_loss(features, target)
+                        ol = ol.detach().cpu().numpy()
+                        ndx = ol.argmin()
 
-                    coords = avg_blob(
-                        fake_mol,
-                        res=resolution,
-                        width=grid_length,
-                        sigma=sigma_cg,
-                        device=self.device,)
-                    for positions, mol in zip(coords, mols):
-                        positions = positions.detach().cpu().numpy()
-                        positions = np.dot(positions, mol.rot_mat.T)
-                        for pos, bead in zip(positions, mol.beads):
-                            bead.pos = pos + mol.com
+                        ol_min = ol[ndx]
+                        if ol_min < ol_min_glob:
+                            ol_min_glob = ol_min
+                            min_coords = np.array([d['cg_positions_intra'] for d in batch])[ndx]
 
+                        #print(ol)
+                        """
+                        coords = avg_blob(
+                            fake_mol,
+                            res=resolution,
+                            width=grid_length,
+                            sigma=sigma_cg,
+                            device=self.device,)
+                        """
+
+                min_coords = np.dot(min_coords, mol.rot_mat.T)
+                for pos, bead in zip(min_coords, mol.beads):
+                    bead.pos = pos + mol.com
+                n = n +1
             samples_dir = self.out.output_dir / "samples"
             samples_dir.mkdir(exist_ok=True)
 
-            for sample in self.data.samples_val_aa:
+            for sample in self.data.samples_train_aa:
                 #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
                 sample.write_gro_file(samples_dir / (sample.name + ".gro"))
         finally:
             self.generator.train()
             self.critic.train()
 
-
-    def train_step_critic(self, elems):
-
-        features, target, _, _ = elems
-
-        #c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
-
-        if self.z_dim != 0:
-            z = torch.empty(
-                [features.shape[0], self.z_dim],
-                dtype=torch.float32,
-                device=self.device,
-            ).normal_()
-
-            fake_mol = self.generator(z, features)
-        else:
-            fake_mol = self.generator(features)
-
-
-        """
-        fake_mol2 = fake_mol.detach().cpu().numpy()
-        fig = plt.figure(figsize=(20, 20))
-        n_chns = 4
-        colours = ['red', 'black', 'green', 'blue']
-        ax = fig.add_subplot(1, 1, 1, projection='3d')
-        # ax.scatter(mol_aa.com[0], mol_aa.com[1],mol_aa.com[2], s=20, marker='o', color='blue', alpha=0.5)
-        for i in range(0, 8):
-            for j in range(0, 8):
-                for k in range(0, 8):
-                    for n in range(0,1):
-                        #ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(target[n,i,j,k], 1.0))
-                        ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=fake_mol2[0, n,i,j,k])
-
-            #ax.set_xlim3d(-1.0, 1.0)
-            #ax.set_ylim3d(-1.0, 1.0)
-            #ax.set_zlim3d(-1.0, 1.0)
-            #ax.set_xticks(np.arange(-1, 1, step=0.5))
-            #ax.set_yticks(np.arange(-1, 1, step=0.5))
-            #ax.set_zticks(np.arange(-1, 1, step=0.5))
-            #ax.tick_params(labelsize=6)
-            #plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
-        plt.show()
-        """
-
-        #fake_data = torch.cat([fake_atom, features], dim=1)
-        #real_data = torch.cat([target_atom[:, None, :, :, :], features], dim=1)
-
-        #critic
-        critic_fake = self.critic(fake_mol)
-        critic_real = self.critic(target)
-
-        loss_on_generated = critic_fake.mean()
-        loss_on_real = critic_real.mean()
-
-        #loss
-        c_wass = self.critic_loss(critic_real, critic_fake)
-        c_eps = self.epsilon_penalty(1e-3, critic_real)
-        c_loss = c_wass + c_eps
-
-        c_gp = 10.0 * self.gradient_penalty(target, fake_mol)
-        if self.use_gp:
-            c_loss += c_gp
-
-        #print(c_loss)
-        #print("::::::::::")
-        self.opt_critic.zero_grad()
-        c_loss.backward()
-        self.opt_critic.step()
-
-        c_loss_dict = {"Critic/wasserstein": c_wass.detach().cpu().numpy(),
-                       "Critic/eps": c_eps.detach().cpu().numpy(),
-                       "Critic/gp": c_gp.detach().cpu().numpy(),
-                       "Critic/total": c_loss.detach().cpu().numpy(),
-                       "Critic/loss_on_generated": loss_on_generated.detach().cpu().numpy(),
-                       "Critic/loss_on_real": loss_on_real.detach().cpu().numpy()
-                       }
-
-        return c_loss_dict
-
-
-    def train_step_gen(self, elems, energy_ndx_aa, energy_ndx_cg, backprop=True):
-
-        features, target, aa_coords_intra, aa_coords = elems
-
-        g_loss = torch.zeros([], dtype=torch.float32, device=self.device)
-
-        if self.z_dim != 0:
-            z = torch.empty(
-                [features.shape[0], self.z_dim],
-                dtype=torch.float32,
-                device=self.device,
-            ).normal_()
-
-            fake_mol = self.generator(z, features)
-        else:
-            fake_mol = self.generator(features)
-
-        critic_fake = self.critic(fake_mol)
-
-        #loss
-        g_wass = self.generator_loss(critic_fake)
-        #print("g_wass", g_wass)
-        g_overlap = self.overlap_loss(features, fake_mol)
-        if self.use_ol:
-            g_loss += g_wass + self.ol_weight * g_overlap
-        else:
-            g_loss += g_wass
-
-        #g_loss = g_overlap
-
-        #real_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, target_atom[:, None, :, :, :])
-        #fake_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, fake_atom)
-
-        e_bond_cg, e_angle_cg, e_dih_cg, e_lj_cg = self.get_energies_cg(fake_mol, energy_ndx_cg)
-        e_bond_aa, e_angle_aa, e_dih_aa, e_lj_aa = self.get_energies_aa(aa_coords_intra, aa_coords, energy_ndx_aa)
-
-        #if 1:
-        #    g_loss += e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg
-
-        #g_loss = g_wass + self.prior_weight() * energy_loss
-        #g_loss = g_wass
-
-        if backprop:
-            self.opt_generator.zero_grad()
-            g_loss.backward()
-            #for param in self.generator.parameters():
-            #    print(param.grad)
-            self.opt_generator.step()
-
-
-        g_loss_dict = {"Generator/wasserstein": g_wass.detach().cpu().numpy(),
-                       "Generator/e_bond_cg": e_bond_cg.detach().cpu().numpy(),
-                       "Generator/e_angle_cg": e_angle_cg.detach().cpu().numpy(),
-                       "Generator/e_dih_cg": e_dih_cg.detach().cpu().numpy(),
-                       "Generator/e_lj_cg": e_lj_cg.detach().cpu().numpy(),
-                       "Generator/e_bond_aa": e_bond_aa.detach().cpu().numpy(),
-                       "Generator/e_angle_aa": e_angle_aa.detach().cpu().numpy(),
-                       "Generator/e_dih_aa": e_dih_aa.detach().cpu().numpy(),
-                       "Generator/e_lj_aa": e_lj_aa.detach().cpu().numpy(),
-                       "Generator/overlap": g_overlap.detach().cpu().numpy()}
-
-        return g_loss_dict
 
 
     def to_voxel(self, coords, grid, sigma):

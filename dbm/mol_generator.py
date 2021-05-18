@@ -50,10 +50,10 @@ class Mol_Generator():
 
             #align
             positions_intra_aa = np.dot(positions_intra_aa, mol_aa.rot_mat)
-            if self.data.n_interatoms:
+            if self.data.n_inter_mols:
                 positions_inter_aa = np.dot(positions_inter_aa, mol_aa.rot_mat)
             positions_intra_cg = np.dot(positions_intra_cg, mol_cg.rot_mat)
-            if self.data.n_interatoms:
+            if self.data.n_inter_mols:
                 positions_inter_cg = np.dot(positions_inter_cg, mol_cg.rot_mat)
 
             atoms = list(mol_aa.atoms) + list(mol_aa.intermolecular_atoms)

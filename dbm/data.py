@@ -22,7 +22,7 @@ class Data():
         self.align = int(cfg.getboolean('universe', 'align'))
         self.cutoff = cfg.getfloat('universe', 'cutoff')
         self.kick = cfg.getfloat('universe', 'kick')
-        self.n_interatoms = int(cfg.getint('universe', 'n_inter_atoms'))
+        self.n_inter_mols = int(cfg.getint('universe', 'n_inter_mols'))
 
         #forcefield
         self.ff_aa_name = cfg.get('data', 'ff_aa')

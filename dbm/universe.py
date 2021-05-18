@@ -30,15 +30,16 @@ class Universe():
 
         self.name = path_dict['file_name']
 
+        #forcefield
+        self.ff = ff
+
         #parameters
         self.cfg = cfg
         self.align = int(cfg.getboolean('universe', 'align'))
         self.cutoff_sq = cfg.getfloat('universe', 'cutoff')**2
         self.kick = cfg.getfloat('universe', 'kick')
-        self.n_inter_atoms = int(cfg.getint('universe', 'n_inter_atoms'))
+        self.n_inter_atoms = int(cfg.getint('universe', 'n_inter_mols')) * self.ff.n_atoms
 
-        #forcefield
-        self.ff = ff
 
         # use mdtraj to load xyz information
         #add element to mdtraj (otherwise some will be identified as VS - virtual sides
