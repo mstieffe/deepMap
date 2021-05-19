@@ -24,7 +24,7 @@ np.set_printoptions(threshold=np.inf)
 
 class Universe():
 
-    def __init__(self, cfg, path_dict, ff):
+    def __init__(self, cfg, path_dict, ff, coms=None):
 
         start = timer()
 
@@ -38,7 +38,8 @@ class Universe():
         self.align = int(cfg.getboolean('universe', 'align'))
         self.cutoff_sq = cfg.getfloat('universe', 'cutoff')**2
         self.kick = cfg.getfloat('universe', 'kick')
-        self.n_inter_atoms = int(cfg.getint('universe', 'n_inter_mols')) * self.ff.n_atoms
+        self.n_env_mols = int(cfg.getint('universe', 'n_env_mols'))
+        self.n_inter_atoms = self.n_env_mols * self.ff.n_atoms
 
 
         # use mdtraj to load xyz information
@@ -52,12 +53,13 @@ class Universe():
         self.n_mol = sample.topology.n_residues
         # box dimensions with periodic boundaries
         self.box = Box(path_dict['path'], cfg.getfloat('universe', 'cutoff'))
-        self.subbox_dict = self.box.empty_subbox_dict()
+        self.subbox_dict_atoms = self.box.empty_subbox_dict()
+        self.subbox_dict_mols = self.box.empty_subbox_dict()
 
         # Go through all molecules in cg file and initialize instances of mols and atoms
         self.atoms, self.beads, self.mols = [], [], []
         for res in sample.topology.residues:
-            self.mols.append(Mol(res.name, self.box))
+            self.mols.append(Mol(res.name, self.box, self.ff))
 
             #aa_top_file = path_dict['top_aa']
             #cg_top_file = path_dict['top_cg']
@@ -71,31 +73,41 @@ class Universe():
                                   self.box.subbox(pos),
                                   pos))
                 self.mols[-1].add_atom(atoms[-1])
-                self.subbox_dict[self.box.subbox(pos)].append(atoms[-1])
+                self.subbox_dict_atoms[self.box.subbox(pos)].append(atoms[-1])
+            self.atoms += atoms
+            Atom.mol_index = 0
+
+
+
+            self.mols[-1].add_aa_top(path_dict['top_aa'])
+            if coms:
+                self.mols[-1].com = coms[len(self.mols)-1]
+            else:
+                self.mols[-1].compute_com()
+            self.subbox_dict_mols[self.box.subbox(self.mols[-1].com)].append(self.mols[-1])
 
             beads = []
             for line in read_between("[atoms]", "[/atoms]", path_dict['top_cg']):
                 if len(line.split()) >= 2:
                     bead_type = line.split()[1][:1]
                     beads.append(Bead(self.mols[-1],
-                                      self.ff.bead_types[bead_type]))
-
+                                      self.ff.bead_types[bead_type],
+                                      pos=self.mols[-1].com))
                 self.mols[-1].add_bead(beads[-1])
-            Atom.mol_index = 0
-
-            self.mols[-1].add_aa_top(path_dict['top_aa'], self.ff)
-            self.mols[-1].add_cg_top(path_dict['top_cg'])
-            self.mols[-1].compute_com()
-            #self.mols[-1].com = np.zeros(3)
-
-            #add atoms and beads to universe
             self.beads += beads
-            self.atoms += atoms
+            self.mols[-1].add_cg_top(path_dict['top_cg'])
 
         for mol in self.mols:
-            intermolecular_atoms = self.intermolecular_atoms(mol)
-            mol.make_ljs(intermolecular_atoms, self.ff)
-            mol.make_preference_axis(self.ff)
+            #intermolecular_atoms = self.intermolecular_atoms(mol)
+            mol.env_mols = self.env_mols(mol)
+            inter_atoms, inter_beads = [], []
+            for m in mol.env_mols:
+                inter_atoms += m.atoms
+                inter_beads += m.beads
+            mol.intermolecular_atoms = inter_atoms
+            mol.intermolecular_beads = inter_beads
+            mol.make_ljs()
+            mol.make_preference_axis()
 
         Atom.index = 0
         Bead.index = 0
@@ -112,7 +124,8 @@ class Universe():
         subboxes = self.box.nn_subboxes(self.box.subbox(mol.com))
         nn_atoms = []
         for sb in subboxes:
-            nn_atoms += self.subbox_dict[sb]
+            nn_atoms += self.subbox_dict_atoms[sb]
+        nn_atoms = list(set(nn_atoms) - set(mol.atoms))
         centered_positions = np.array([self.box.diff_vec(a.pos - mol.com) for a in nn_atoms])
         centered_positions_sq = np.array([r[0] * r[0] + r[1] * r[1] + r[2] * r[2] for r in centered_positions])
         idx = np.argpartition(centered_positions_sq, self.n_inter_atoms)
@@ -121,13 +134,29 @@ class Universe():
         #return [nn_atoms[i] for i in indices]
         return nn_atoms[idx[:self.n_inter_atoms]]
 
+    def env_mols(self, mol):
+        subboxes = self.box.nn_subboxes(self.box.subbox(mol.com))
+        nn_mols = []
+        for sb in subboxes:
+            nn_mols += self.subbox_dict_mols[sb]
+        nn_mols.remove(mol)
+        #nn_mols = list(set(nn_atoms) - set(mol.atoms))
+        centered_positions = np.array([self.box.diff_vec(m.com - mol.com) for m in nn_mols])
+        centered_positions_sq = np.array([r[0] * r[0] + r[1] * r[1] + r[2] * r[2] for r in centered_positions])
+        idx = np.argpartition(centered_positions_sq, self.n_env_mols)
+        #indices = np.where(np.array(centered_positions_sq) <= self.cutoff_sq)[0]
+        nn_mols = np.array(nn_mols)
+        #return [nn_atoms[i] for i in indices]
+        return nn_mols[idx[:self.n_env_mols]]
+
     def kick_atoms(self):
         for a in self.atoms:
             a.pos = np.random.normal(-self.kick, self.kick, 3)
 
     def kick_beads(self):
         for b in self.beads:
-            b.pos = np.random.normal(-self.kick, self.kick, 3)
+            #b.pos = np.zeros(3)
+            b.pos = b.pos + np.random.normal(-self.kick, self.kick, 3)
 
 
     def energy(self, ref=False, shift=False, resolve_terms=False):

@@ -41,7 +41,7 @@ class DS(Dataset):
 
         self.data = data
         self.train = train
-        self.n_interatoms = int(cfg.getint('universe', 'n_inter_atoms'))
+        self.n_env_mols = int(cfg.getint('universe', 'n_env_mols'))
 
         g = Mol_Generator(data, train=train, rand_rot=False)
 
@@ -58,6 +58,8 @@ class DS(Dataset):
         else:
             self.rand_rot = False
         self.align = int(cfg.getboolean('universe', 'align'))
+
+        self.cg_env = cfg.getboolean('model', 'cg_env')
 
         self.grid = make_grid_np(self.delta_s, self.resolution)
 
@@ -84,21 +86,31 @@ class DS(Dataset):
         cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
 
         #if d['aa_positions_inter']:
-        if self.n_interatoms:
+        if self.n_env_mols:
             aa_coords_inter = np.dot(d['aa_positions_inter'], R.T)
             aa_coords = np.concatenate((aa_coords_intra, aa_coords_inter), 0)
             aa_blobbs_inter = voxelize_gauss(aa_coords_inter, self.sigma_aa, self.grid)
             aa_features_inter = d['aa_inter_featvec'][:, :, None, None, None] * aa_blobbs_inter[:, None, :, :, :]
             aa_features_inter = np.sum(aa_features_inter, 0)
-            features = np.concatenate((aa_features_intra, aa_features_inter), 0)
+            aa_features = np.concatenate((aa_features_intra, aa_features_inter), 0)
 
+            if self.cg_env:
+                cg_blobbs_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
+                cg_features_inter = d['cg_inter_featvec'][:, :, None, None, None] * cg_blobbs_inter[:, None, :, :, :]
+                cg_features_inter = np.sum(cg_features_inter, 0)
+                features = np.concatenate((aa_features, cg_features_inter), 0)
+            else:
+                features = aa_features
         else:
             features = aa_features_intra
             aa_coords = aa_coords_intra
 
-        if self.n_interatoms:
-            cg_positions_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
-
+        """
+        if self.n_env_mols:
+            cg_blobbs_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
+            cg_features_inter = d['cg_inter_featvec'][:, :, None, None, None] * cg_blobbs_inter[:, None, :, :, :]
+            cg_features_inter = np.sum(cg_features_inter, 0)
+        """
         target = cg_positions_intra
 
         energy_ndx_aa = (d['aa_bond_ndx'], d['aa_ang_ndx'], d['aa_dih_ndx'], d['aa_lj_intra_ndx'], d['aa_lj_ndx'])
@@ -183,7 +195,7 @@ class GAN():
         #model
         self.name = cfg.get('model', 'name')
 
-        if int(cfg.getint('universe', 'n_inter_atoms')) != 0:
+        if int(cfg.getint('universe', 'n_env_mols')) != 0:
             self.n_input = self.ff_aa.n_atom_chns * 2
         else:
             self.n_input = self.ff_aa.n_atom_chns
@@ -254,6 +266,8 @@ class GAN():
 
         self.use_gp = cfg.getboolean('model', 'gp')
         self.use_ol = cfg.getboolean('model', 'ol')
+
+        self.cond = cfg.getboolean('model', 'cond')
 
 
         self.critic.to(device=device)
@@ -527,14 +541,11 @@ class GAN():
 
                     aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
                     aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
-
                     mols = np.array([d['aa_mol'] for d in batch])
 
                     aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
                     aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma_aa)
 
-                    #print(aa_intra_featvec[:, :, :, None, None, None].shape)
-                    #print(aa_blobbs_intra[:, :, None, :, :, :].size())
                     features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
                     features = torch.sum(features, 1)
 
@@ -621,18 +632,25 @@ class GAN():
         #real_data = torch.cat([target_atom[:, None, :, :, :], features], dim=1)
 
         #critic
-        critic_fake = self.critic(fake_mol)
-        critic_real = self.critic(target)
+        if self.cond:
+            fake_data = torch.cat([fake_mol, features], dim=1)
+            real_data = torch.cat([target, features], dim=1)
+        else:
+            fake_data = fake_mol
+            real_data = target
 
-        loss_on_generated = critic_fake.mean()
-        loss_on_real = critic_real.mean()
+
+
+        critic_fake = self.critic(fake_data)
+        critic_real = self.critic(real_data)
+
 
         #loss
         c_wass = self.critic_loss(critic_real, critic_fake)
         c_eps = self.epsilon_penalty(1e-3, critic_real)
         c_loss = c_wass + c_eps
 
-        c_gp = 10.0 * self.gradient_penalty(target, fake_mol)
+        c_gp = 10.0 * self.gradient_penalty(real_data, fake_data)
         if self.use_gp:
             c_loss += c_gp
 
@@ -645,9 +663,7 @@ class GAN():
         c_loss_dict = {"Critic/wasserstein": c_wass.detach().cpu().numpy(),
                        "Critic/eps": c_eps.detach().cpu().numpy(),
                        "Critic/gp": c_gp.detach().cpu().numpy(),
-                       "Critic/total": c_loss.detach().cpu().numpy(),
-                       "Critic/loss_on_generated": loss_on_generated.detach().cpu().numpy(),
-                       "Critic/loss_on_real": loss_on_real.detach().cpu().numpy()
+                       "Critic/total": c_loss.detach().cpu().numpy()
                        }
 
         return c_loss_dict
@@ -670,7 +686,12 @@ class GAN():
         else:
             fake_mol = self.generator(features)
 
-        critic_fake = self.critic(fake_mol)
+        if self.cond:
+            fake_data = torch.cat([fake_mol, features], dim=1)
+        else:
+            fake_data = fake_mol
+
+        critic_fake = self.critic(fake_data)
 
         #loss
         g_wass = self.generator_loss(critic_fake)

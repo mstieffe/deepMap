@@ -180,10 +180,14 @@ class FF():
                 self.dih_types[name] = Dih_Type(name, channel, func, equil, force_const)
         self.dih_index_dict = dict(zip(self.dih_types.values(),range(0,len(self.dih_types))))
 
+        """
         self.align= None
         for line in read_between("[align]", "[/align]", self.file):
             ndx1, ndx2 = line.split()
             self.align = (int(ndx1)-1, int(ndx2)-1)
+        """
+
+        #print(self.bead_types)
 
 
         self.n_channels += 1

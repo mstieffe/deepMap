@@ -35,7 +35,7 @@ class Mol_Generator_AA():
         for mol_aa in self.mols_aa:
             d = {}
 
-            positions_intra_aa, positions_intra_cg = [], []
+            positions_intra_aa = []
             for a in mol_aa.atoms:
                 positions_intra_aa.append(mol_aa.box.diff_vec(a.pos - mol_aa.com))
 
@@ -43,10 +43,16 @@ class Mol_Generator_AA():
             for a in mol_aa.intermolecular_atoms:
                 positions_inter_aa.append(mol_aa.box.diff_vec(a.pos - mol_aa.com))
 
+            for a in mol_aa.intermolecular_beads:
+                positions_inter_cg.append(mol_aa.box.diff_vec(a.pos - mol_aa.com))
+
             #align
             positions_intra_aa = np.dot(positions_intra_aa, mol_aa.rot_mat)
-            if self.data.n_inter_mols:
+            if self.data.n_env_mols:
                 positions_inter_aa = np.dot(positions_inter_aa, mol_aa.rot_mat)
+
+                positions_inter_cg = np.dot(positions_inter_cg, mol_aa.rot_mat)
+
 
             atoms = list(mol_aa.atoms) + list(mol_aa.intermolecular_atoms)
 
@@ -60,12 +66,16 @@ class Mol_Generator_AA():
             aa_intra_featvec = self.featvec(mol_aa.atoms, self.data.ff_aa)
             aa_inter_featvec = self.featvec(mol_aa.intermolecular_atoms, self.data.ff_aa)
 
+            cg_inter_featvec = self.featvec(mol_aa.intermolecular_beads, self.data.ff_cg)
+
 
             d={
                 "aa_positions_intra": np.array(positions_intra_aa, dtype=np.float32),
                 "aa_positions_inter": np.array(positions_inter_aa, dtype=np.float32),
+                "cg_positions_inter": np.array(positions_inter_cg, dtype=np.float32),
                 "aa_intra_featvec": np.array(aa_intra_featvec, dtype=np.float32),
                 "aa_inter_featvec": np.array(aa_inter_featvec, dtype=np.float32),
+                "cg_inter_featvec": np.array(cg_inter_featvec, dtype=np.float32),
                 "aa_bond_ndx": np.array(aa_bond_ndx, dtype=np.int64),
                 "aa_ang_ndx": np.array(aa_ang_ndx, dtype=np.int64),
                 "aa_dih_ndx": np.array(aa_dih_ndx, dtype=np.int64),

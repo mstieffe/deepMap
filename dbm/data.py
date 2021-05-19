@@ -22,7 +22,9 @@ class Data():
         self.align = int(cfg.getboolean('universe', 'align'))
         self.cutoff = cfg.getfloat('universe', 'cutoff')
         self.kick = cfg.getfloat('universe', 'kick')
-        self.n_inter_mols = int(cfg.getint('universe', 'n_inter_mols'))
+        self.n_env_mols = int(cfg.getint('universe', 'n_env_mols'))
+        self.pairs = cfg.getboolean('data', 'pairs')
+
 
         #forcefield
         self.ff_aa_name = cfg.get('data', 'ff_aa')
@@ -53,16 +55,24 @@ class Data():
 
         #self.samples_train, self.samples_val = [], []
         self.dict_train_aa, self.dict_val_aa, self.dict_train_cg, self.dict_val_cg = {}, {}, {}, {}
-        for path in self.dirs_train_aa:
-            self.dict_train_aa[path.stem] = self.get_samples(path, res="aa", save=save)
-        for path in self.dirs_train_cg:
-            self.dict_train_cg[path.stem] = self.get_samples(path, res="cg", save=save)
+        if self.pairs:
+            for path_aa, path_cg in zip(self.dirs_train_aa, self.dirs_train_cg):
+                self.dict_train_aa[path_aa.stem], self.dict_train_cg[path_cg.stem] = self.get_sample_pairs(path_aa, path_cg, save=save)
+        else:
+            for path in self.dirs_train_aa:
+                self.dict_train_aa[path.stem] = self.get_samples(path, res="aa", save=save)
+            for path in self.dirs_train_cg:
+                self.dict_train_cg[path.stem] = self.get_samples(path, res="cg", save=save)
         self.samples_train_aa = list(itertools.chain.from_iterable(self.dict_train_aa.values()))
         self.samples_train_cg = list(itertools.chain.from_iterable(self.dict_train_cg.values()))
-        for path in self.dirs_val_aa:
-            self.dict_val_aa[path.stem] = self.get_samples(path, res="aa", save=save)
-        for path in self.dirs_val_cg:
-            self.dict_val_cg[path.stem] = self.get_samples(path, res="cg", save=save)
+        if cfg.getboolean('data', 'pairs'):
+            for path_aa, path_cg in zip(self.dirs_val_aa, self.dirs_val_cg):
+                self.dict_val_aa[path_aa.stem], self.dict_val_cg[path_cg.stem] = self.get_sample_pairs(path_aa, path_cg, save=save)
+        else:
+            for path in self.dirs_val_aa:
+                self.dict_val_aa[path.stem] = self.get_samples(path, res="aa", save=save)
+            for path in self.dirs_val_cg:
+                self.dict_val_cg[path.stem] = self.get_samples(path, res="cg", save=save)
         self.samples_val_aa = list(itertools.chain.from_iterable(self.dict_val_aa.values()))
         self.samples_val_cg = list(itertools.chain.from_iterable(self.dict_val_cg.values()))
 
@@ -70,6 +80,48 @@ class Data():
         #self.max = self.get_max_dict()
 
         print("Successfully created universe! This took ", timer()-start, "secs")
+
+    def get_sample_pairs(self, path_aa, path_cg, save=False):
+        name_aa = path_aa.stem + "_" + self.desc
+        processed_path_aa = self.dir_processed / name_aa
+        name_cg = path_cg.stem + "_" + self.desc
+        processed_path_cg = self.dir_processed / name_cg
+
+        for p in path_cg.glob('*.gro'):
+            aa_file = path_aa / p.name
+            if not aa_file.exists():
+                raise Exception('can not generate sample pairs. no matching files found for ', aa_file)
+
+        if processed_path_cg.exists() and processed_path_aa.exists():
+            with open(processed_path_aa, 'rb') as input:
+                samples_aa = pickle.load(input)
+            print("Loaded train universe from " + str(processed_path_aa))
+            with open(processed_path_cg, 'rb') as input:
+                samples_cg = pickle.load(input)
+            print("Loaded train universe from " + str(processed_path_cg))
+        else:
+            samples_aa, samples_cg = [], []
+            # dir = path / res
+            for p_aa, p_cg in zip(path_aa.glob('*.gro'), path_cg.glob('*.gro')):
+                # path_dict = {'data_dir': self.data_dir, 'path': p, 'file_name': p.stem, 'top_aa': self.top_aa, 'top_cg': self.top_cg}
+                path_dict_aa = {'data_dir': self.data_dir, 'top_aa': self.top_aa, 'top_cg': self.top_cg, 'path': p_aa, 'file_name': p_aa.stem}
+                path_dict_cg = {'data_dir': self.data_dir, 'top_aa': self.top_cg, 'top_cg': self.top_aa, 'path': p_cg, 'file_name': p_cg.stem}
+
+                u_aa = Universe(self.cfg, path_dict_aa, self.ff_aa)
+                coms = [m.com for m in u_aa.mols]
+                u_cg = Universe(self.cfg, path_dict_cg, self.ff_cg, coms=coms)
+
+                if len(u_aa.mols) != len(u_cg.mols):
+                    raise Exception('number of molecules does not match for ', p_aa, ' and ', p_cg)
+
+                samples_aa.append(u_aa)
+                samples_cg.append(u_cg)
+            if save:
+                with open(processed_path_aa, 'wb') as output:
+                    pickle.dump(samples_aa, output, pickle.HIGHEST_PROTOCOL)
+                with open(processed_path_cg, 'wb') as output:
+                    pickle.dump(samples_cg, output, pickle.HIGHEST_PROTOCOL)
+        return samples_aa, samples_cg
 
     def get_samples(self, path, res="aa", save=False):
         name = path.stem + "_" + res + "_" + self.desc

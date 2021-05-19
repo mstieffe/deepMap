@@ -3,14 +3,13 @@ import math
 import matplotlib.pyplot as plt
 import random
 
-class Mol_Generator():
+class Mol_Pairs_Generator():
 
-    def __init__(self, data, train=False, rand_rot=False, cg_env_ref=True):
+    def __init__(self, data, train=False, rand_rot=False):
 
         self.data = data
         self.train = train
         self.rand_rot = rand_rot
-        self.cg_env_ref = cg_env_ref
 
         if train:
             self.samples_aa = self.data.samples_train_aa
@@ -28,10 +27,7 @@ class Mol_Generator():
         #for mols in [s.mols for s in self.samples_cg]:
         #    self.mols_cg += mols
 
-        if not self.data.pairs:
-            random.shuffle(self.mols_aa)
-            random.shuffle(self.mols_cg)
-
+        #random.shuffle(self.mols_aa)
 
     def __iter__(self):
 
@@ -51,26 +47,14 @@ class Mol_Generator():
                 positions_inter_aa.append(mol_aa.box.diff_vec(a.pos - mol_aa.com))
             for a in mol_cg.intermolecular_atoms:
                 positions_inter_cg.append(mol_cg.box.diff_vec(a.pos - mol_cg.com))
-            """
-            if self.cg_env_ref:
-                for a in mol_cg.intermolecular_atoms:
-                    positions_inter_cg.append(mol_cg.box.diff_vec(a.pos - mol_cg.com))
-            else:
-                for a in mol_aa.intermolecular_beads:
-                    positions_inter_cg.append(mol_aa.box.diff_vec(a.pos - mol_aa.com))
-            """
+
             #align
-            if self.data.pairs:
-                cg_rot_mat = mol_aa.rot_mat
-            else:
-                cg_rot_mat = mol_cg.rot_mat
             positions_intra_aa = np.dot(positions_intra_aa, mol_aa.rot_mat)
-            positions_intra_cg = np.dot(positions_intra_cg, cg_rot_mat)
             if self.data.n_env_mols:
                 positions_inter_aa = np.dot(positions_inter_aa, mol_aa.rot_mat)
-                positions_inter_cg = np.dot(positions_inter_cg, cg_rot_mat)
-
-
+            positions_intra_cg = np.dot(positions_intra_cg, mol_cg.rot_mat)
+            if self.data.n_env_mols:
+                positions_inter_cg = np.dot(positions_inter_cg, mol_cg.rot_mat)
 
             atoms = list(mol_aa.atoms) + list(mol_aa.intermolecular_atoms)
             beads = list(mol_cg.atoms) + list(mol_cg.intermolecular_atoms)

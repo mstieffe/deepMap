@@ -36,11 +36,6 @@ C       H    -1
 H       H    -1
 [/lj_types]
 
-[align]
-;i	j
-2	35
-[/align]
-
 [bead_types]
 ;name	channel
 B	2

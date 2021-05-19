@@ -57,7 +57,7 @@ class Bead():
 class Mol():
 
     index = 0
-    def __init__(self, name, box, beads = None, atoms = None):
+    def __init__(self, name, box, ff, beads = None, atoms = None, top_file = None):
         self.name = name
         self.index = Mol.index
         Mol.index += 1
@@ -78,15 +78,20 @@ class Mol():
         self.angles = []
         self.dihs = []
         self.excls = []
-        self.pairs= []
+        self.pairs = []
 
         self.cg_edges = []
 
         self.fp = {}
 
+        self.top_file = top_file
+        self.ff = ff
+
         self.com = None
         self.box = box
+        self.env_mols = None
         self.intermolecular_atoms = None
+        self.intermolecular_beads = None
 
     def compute_com(self):
         com, mass, = np.zeros(3), 0.0
@@ -103,13 +108,15 @@ class Mol():
     def add_atom(self, atom):
         self.atoms.append(atom)
 
-    def add_aa_top(self, top_file, ff):
+    def add_aa_top(self, top_file):
+
+        self.top_file = top_file
 
         for line in read_between("[bonds]", "[/bonds]", top_file):
             if len(line.split()) >= 2:
                 index1 = int(line.split()[0]) - 1
                 index2 = int(line.split()[1]) - 1
-                bond = ff.make_bond([self.atoms[index1], self.atoms[index2]])
+                bond = self.ff.make_bond([self.atoms[index1], self.atoms[index2]])
                 if bond:
                     self.add_bond(bond)
 
@@ -118,7 +125,7 @@ class Mol():
                 index1 = int(line.split()[0]) - 1
                 index2 = int(line.split()[1]) - 1
                 index3 = int(line.split()[2]) - 1
-                angle = ff.make_angle([self.atoms[index1], self.atoms[index2], self.atoms[index3]])
+                angle = self.ff.make_angle([self.atoms[index1], self.atoms[index2], self.atoms[index3]])
                 if angle:
                     self.add_angle(angle)
 
@@ -128,7 +135,7 @@ class Mol():
                 index2 = int(line.split()[1]) - 1
                 index3 = int(line.split()[2]) - 1
                 index4 = int(line.split()[3]) - 1
-                dih = ff.make_dih([self.atoms[index1], self.atoms[index2], self.atoms[index3], self.atoms[index4]])
+                dih = self.ff.make_dih([self.atoms[index1], self.atoms[index2], self.atoms[index3], self.atoms[index4]])
                 if dih:
                     self.add_dih(dih)
 
@@ -146,12 +153,12 @@ class Mol():
 
         self.make_aa_graph()
 
-    def make_ljs(self, intermolecular_atoms, ff):
-        self.intermolecular_atoms = intermolecular_atoms
+    def make_ljs(self):
+        #self.intermolecular_atoms = intermolecular_atoms
         #nexcl_atoms: bonded atoms up to n_excl
         #lengths, paths = nx.multi_source_dijkstra(self.G, self.atoms, cutoff=ff.n_excl)
         #lengths, paths = nx.all_pairs_dijkstra(self.G, self.atoms, cutoff=ff.n_excl)
-        paths = nx.all_pairs_shortest_path(self.G, cutoff=ff.n_excl)
+        paths = nx.all_pairs_shortest_path(self.G, cutoff=self.ff.n_excl)
         path_exclusions = []
         for p in paths:
             path_exclusions += [(t[0], t[-1]) for t in list(p[1].values())]
@@ -204,15 +211,15 @@ class Mol():
         #generate inter molecular lj pairs
         lj_pairs_inter = []
         for a in self.atoms:
-            for b in intermolecular_atoms:
+            for b in self.intermolecular_atoms:
                 lj_pairs_inter.append((a, b))
 
         #all lj pairs
         lj_pairs = lj_pairs_intra + lj_pairs_inter
 
         #equip with ff parameters
-        self.ljs_intra = ff.make_ljs(lj_pairs_intra)
-        self.ljs = ff.make_ljs(lj_pairs)
+        self.ljs_intra = self.ff.make_ljs(lj_pairs_intra)
+        self.ljs = self.ff.make_ljs(lj_pairs)
 
     def add_cg_top(self, top_file):
 
@@ -241,11 +248,19 @@ class Mol():
     def add_cg_edge(self, edge):
         self.cg_edges.append(edge)
 
-    def make_preference_axis(self, ff):
+    def make_preference_axis(self):
 
-        if ff.align:
-            c1 = self.atoms[ff.align[0]]
-            c2 = self.atoms[ff.align[1]]
+        if not self.top_file.exists():
+            raise Exception('No topology file. Add topology file before calling make_preference_axis')
+
+        align = None
+        for line in read_between("[align]", "[/align]", self.top_file):
+            ndx1, ndx2 = line.split()
+            align = (int(ndx1)-1, int(ndx2)-1)
+
+        if align:
+            c1 = self.atoms[align[0]]
+            c2 = self.atoms[align[1]]
 
             # compute rotation matrix to align loc env (aligns fixpoint vector with z-axis)
             v1 = np.array([0.0, 0.0, 1.0])
