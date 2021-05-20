@@ -115,7 +115,8 @@ class Mol_Generator_AA():
     def featvec(self, atoms, ff):
         featvec = np.zeros((len(atoms), ff.n_atom_chns))
         for index in range(0, len(atoms)):
-            featvec[index, atoms[index].type.channel] = 1
+            #print(atoms[index].type.channel, ff.atom_types[atoms[index].type.name].channel)
+            featvec[index, ff.atom_types[atoms[index].type.name].channel] = 1
         return featvec
 
     def energy_ndx(self, mol, index_intra_dict, index_dict):

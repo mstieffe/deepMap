@@ -1,6 +1,6 @@
 [general]
 ; Name      	nrexcl		n_atoms
-dodecane_cg           1		3
+octane_cg           1		4
 [/general]
 
 [atom_types]

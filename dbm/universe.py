@@ -156,7 +156,7 @@ class Universe():
     def kick_beads(self):
         for b in self.beads:
             #b.pos = np.zeros(3)
-            b.pos = b.pos + np.random.normal(-self.kick, self.kick, 3)
+            b.pos = b.mol.com + np.random.normal(-self.kick, self.kick, 3)
 
 
     def energy(self, ref=False, shift=False, resolve_terms=False):

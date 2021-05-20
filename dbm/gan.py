@@ -77,41 +77,36 @@ class DS(Dataset):
 
 
         aa_coords_intra = np.dot(d['aa_positions_intra'], R.T)
+        aa_coords_intra = np.array(aa_coords_intra)
         aa_blobbs_intra = voxelize_gauss(aa_coords_intra, self.sigma_aa, self.grid)
         aa_features_intra = d['aa_intra_featvec'][:, :, None, None, None] * aa_blobbs_intra[:, None, :, :, :]
-        aa_features_intra = np.sum(aa_features_intra, 0)
+
+        features = np.sum(aa_features_intra, 0)
         #aa_features_intra = aa_blobbs_intra
 
-        #print(np.dot(d['cg_positions_intra'], R.T))
-        cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
+        aa_coords = aa_coords_intra
 
         #if d['aa_positions_inter']:
         if self.n_env_mols:
             aa_coords_inter = np.dot(d['aa_positions_inter'], R.T)
-            aa_coords = np.concatenate((aa_coords_intra, aa_coords_inter), 0)
             aa_blobbs_inter = voxelize_gauss(aa_coords_inter, self.sigma_aa, self.grid)
             aa_features_inter = d['aa_inter_featvec'][:, :, None, None, None] * aa_blobbs_inter[:, None, :, :, :]
             aa_features_inter = np.sum(aa_features_inter, 0)
-            aa_features = np.concatenate((aa_features_intra, aa_features_inter), 0)
+            features = np.concatenate((features, aa_features_inter), 0)
+
+            aa_coords = np.concatenate((aa_coords_intra, aa_coords_inter), 0)
 
             if self.cg_env:
                 cg_blobbs_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
                 cg_features_inter = d['cg_inter_featvec'][:, :, None, None, None] * cg_blobbs_inter[:, None, :, :, :]
                 cg_features_inter = np.sum(cg_features_inter, 0)
-                features = np.concatenate((aa_features, cg_features_inter), 0)
-            else:
-                features = aa_features
-        else:
-            features = aa_features_intra
-            aa_coords = aa_coords_intra
+                features = np.concatenate((features, cg_features_inter), 0)
 
-        """
-        if self.n_env_mols:
-            cg_blobbs_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
-            cg_features_inter = d['cg_inter_featvec'][:, :, None, None, None] * cg_blobbs_inter[:, None, :, :, :]
-            cg_features_inter = np.sum(cg_features_inter, 0)
-        """
+        cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
         target = cg_positions_intra
+
+        #print(target.shape)
+        #print(features.shape)
 
         energy_ndx_aa = (d['aa_bond_ndx'], d['aa_ang_ndx'], d['aa_dih_ndx'], d['aa_lj_intra_ndx'], d['aa_lj_ndx'])
         energy_ndx_cg = (d['cg_bond_ndx'], d['cg_ang_ndx'], d['cg_dih_ndx'], d['cg_lj_intra_ndx'],  d['cg_lj_ndx'])
@@ -195,13 +190,24 @@ class GAN():
         #model
         self.name = cfg.get('model', 'name')
 
-        if int(cfg.getint('universe', 'n_env_mols')) != 0:
-            self.n_input = self.ff_aa.n_atom_chns * 2
-        else:
-            self.n_input = self.ff_aa.n_atom_chns
+        self.cond = cfg.getboolean('model', 'cond')
+        if self.cond and not self.data.pairs:
+            raise Exception('conditional GAN can only be used with pairs of snapshots for both resolutions.')
 
-        self.n_out = self.ff_cg.n_atoms
+        self.feature_dim = self.ff_aa.n_atom_chns
+        if cfg.getint('universe', 'n_env_mols') != 0:
+            self.feature_dim += self.ff_aa.n_atom_chns
+            if cfg.getboolean('model', 'cg_env'):
+                self.feature_dim += self.ff_cg.n_atom_chns
+
+        self.target_dim = self.ff_cg.n_atoms
+        self.critic_dim = self.target_dim
+        if self.cond:
+            self.critic_dim += self.feature_dim
+
         self.z_dim = int(cfg.getint('model', 'noise_dim'))
+
+        #print(self.ff_aa.n_atom_chns, self.n_input, self.n_out, self.ff_cg.n_atoms)
 
         self.step = 0
         self.epoch = 0
@@ -231,16 +237,16 @@ class GAN():
         #    print("Using tiny model")
         if self.z_dim != 0:
             self.generator = model.G_tiny_with_noise(z_dim=self.z_dim,
-                                                n_input=self.n_input,
-                                                n_output=self.n_out,
+                                                n_input=self.feature_dim,
+                                                n_output=self.target_dim,
                                                 start_channels=self.cfg.getint('model', 'n_chns'),
                                                 fac=1,
                                                 sn=self.cfg.getint('model', 'sn_gen'),
                                                 device=device)
             print("Using tiny generator with noise")
         else:
-            self.generator = model.G_tiny(n_input=self.n_input,
-                                            n_output=self.n_out,
+            self.generator = model.G_tiny(n_input=self.feature_dim,
+                                            n_output=self.target_dim,
                                             start_channels=self.cfg.getint('model', 'n_chns'),
                                             fac=1,
                                             sn=self.cfg.getint('model', 'sn_gen'),
@@ -248,7 +254,7 @@ class GAN():
             print("Using tiny generator without noise")
 
         if cfg.getint('grid', 'resolution') == 8:
-            self.critic = model.C_tiny(in_channels=self.n_out,
+            self.critic = model.C_tiny(in_channels=self.critic_dim,
                                               start_channels=self.cfg.getint('model', 'n_chns'),
                                               fac=1, sn=self.cfg.getint('model', 'sn_crit'),
                                               device=device)
@@ -256,7 +262,7 @@ class GAN():
 
 
         else:
-            self.critic = model.C_tiny16(in_channels=self.n_out,
+            self.critic = model.C_tiny16(in_channels=self.critic_dim,
                                               start_channels=self.cfg.getint('model', 'n_chns'),
                                               fac=1, sn=self.cfg.getint('model', 'sn_crit'),
                                               device=device)
@@ -267,7 +273,7 @@ class GAN():
         self.use_gp = cfg.getboolean('model', 'gp')
         self.use_ol = cfg.getboolean('model', 'ol')
 
-        self.cond = cfg.getboolean('model', 'cond')
+
 
 
         self.critic.to(device=device)
@@ -521,6 +527,8 @@ class GAN():
                 self.val()
 
     def val(self):
+        start = timer()
+
         resolution = self.cfg.getint('grid', 'resolution')
         grid_length = self.cfg.getfloat('grid', 'length')
         delta_s = self.cfg.getfloat('grid', 'length') / self.cfg.getint('grid', 'resolution')
@@ -528,51 +536,83 @@ class GAN():
         sigma_cg = self.cfg.getfloat('grid', 'sigma_cg')
         grid = torch.from_numpy(make_grid_np(delta_s, resolution)).to(self.device)
 
+        cg_env = self.cfg.getboolean('model', 'cg_env')
+        val_bs = self.cfg.getint('validate', 'batchsize')
+
+
         g = Mol_Generator_AA(self.data, train=False, rand_rot=False)
         all_elems = list(g)
+
 
         try:
             self.generator.eval()
             self.critic.eval()
 
-            for ndx in range(0, len(all_elems), self.bs):
-                with torch.no_grad():
-                    batch = all_elems[ndx:min(ndx + self.bs, len(all_elems))]
+            for o in range(0, self.cfg.getint('validate', 'n_gibbs')):
+                for ndx in range(0, len(all_elems), val_bs):
+                    with torch.no_grad():
+                        batch = all_elems[ndx:min(ndx + val_bs, len(all_elems))]
 
-                    aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
-                    aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
-                    mols = np.array([d['aa_mol'] for d in batch])
+                        aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
+                        aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
 
-                    aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
-                    aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma_aa)
+                        aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
+                        aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma_aa)
 
-                    features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
-                    features = torch.sum(features, 1)
+                        features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
+                        features = torch.sum(features, 1)
 
-                    #elems, energy_ndx_aa, energy_ndx_cg = val_batch
-                    #features, _, aa_coords_intra, aa_coords = elems
-                    if self.z_dim != 0:
-                        z = torch.empty(
-                            [features.shape[0], self.z_dim],
-                            dtype=torch.float32,
-                            device=self.device,
-                        ).normal_()
+                        if self.data.n_env_mols:
+                            aa_positions_inter = np.array([d['aa_positions_inter'] for d in batch])
+                            aa_inter_featvec = np.array([d['aa_inter_featvec'] for d in batch])
 
-                        fake_mol = self.generator(z, features)
-                    else:
-                        fake_mol = self.generator(features)
+                            aa_positions_inter = torch.from_numpy(aa_positions_inter).to(self.device).float()
+                            aa_blobbs_inter = self.to_voxel(aa_positions_inter, grid, sigma_aa)
 
-                    coords = avg_blob(
-                        fake_mol,
-                        res=resolution,
-                        width=grid_length,
-                        sigma=sigma_cg,
-                        device=self.device,)
-                    for positions, mol in zip(coords, mols):
-                        positions = positions.detach().cpu().numpy()
-                        positions = np.dot(positions, mol.rot_mat.T)
-                        for pos, bead in zip(positions, mol.beads):
-                            bead.pos = pos + mol.com
+                            features_aa_inter = torch.from_numpy(aa_inter_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_inter[:, :, None, :, :, :]
+                            features_aa_inter = torch.sum(features_aa_inter, 1)
+
+                            features = torch.cat((features, features_aa_inter), 1)
+
+                            if cg_env:
+                                cg_positions_inter = np.array([d['cg_positions_inter'] for d in batch])
+                                cg_inter_featvec = np.array([d['cg_inter_featvec'] for d in batch])
+
+                                cg_positions_inter = torch.from_numpy(cg_positions_inter).to(self.device).float()
+                                cg_blobbs_inter = self.to_voxel(cg_positions_inter, grid, sigma_aa)
+
+                                features_cg_inter = torch.from_numpy(cg_inter_featvec[:, :, :, None, None, None]).to(self.device) * cg_blobbs_inter[:, :, None, :, :, :]
+                                features_cg_inter = torch.sum(features_cg_inter, 1)
+
+                                features = torch.cat((features, features_cg_inter), 1)
+
+                        mols = np.array([d['aa_mol'] for d in batch])
+
+
+                        #elems, energy_ndx_aa, energy_ndx_cg = val_batch
+                        #features, _, aa_coords_intra, aa_coords = elems
+                        if self.z_dim != 0:
+                            z = torch.empty(
+                                [features.shape[0], self.z_dim],
+                                dtype=torch.float32,
+                                device=self.device,
+                            ).normal_()
+
+                            fake_mol = self.generator(z, features)
+                        else:
+                            fake_mol = self.generator(features)
+
+                        coords = avg_blob(
+                            fake_mol,
+                            res=resolution,
+                            width=grid_length,
+                            sigma=sigma_cg,
+                            device=self.device,)
+                        for positions, mol in zip(coords, mols):
+                            positions = positions.detach().cpu().numpy()
+                            positions = np.dot(positions, mol.rot_mat.T)
+                            for pos, bead in zip(positions, mol.beads):
+                                bead.pos = pos + mol.com
 
             samples_dir = self.out.output_dir / "samples"
             samples_dir.mkdir(exist_ok=True)
@@ -580,9 +620,11 @@ class GAN():
             for sample in self.data.samples_val_aa:
                 #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
                 sample.write_gro_file(samples_dir / (sample.name + ".gro"))
+                sample.kick_beads()
         finally:
             self.generator.train()
             self.critic.train()
+            print("validation took ", timer()-start, "secs")
 
 
     def train_step_critic(self, elems):
@@ -696,7 +738,7 @@ class GAN():
         #loss
         g_wass = self.generator_loss(critic_fake)
         #print("g_wass", g_wass)
-        g_overlap = self.overlap_loss(features, fake_mol)
+        g_overlap = self.overlap_loss(features[:, :self.ff_aa.n_atom_chns], fake_mol[:, :self.ff_cg.n_atoms])
         if self.use_ol:
             g_loss += g_wass + self.ol_weight * g_overlap
         else:
