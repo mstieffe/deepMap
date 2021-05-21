@@ -85,7 +85,7 @@ class DS(Dataset):
         #aa_features_intra = aa_blobbs_intra
 
         aa_coords = aa_coords_intra
-
+        cg_coords_inter = np.zeros((1,3))
         #if d['aa_positions_inter']:
         if self.n_env_mols:
             aa_coords_inter = np.dot(d['aa_positions_inter'], R.T)
@@ -97,7 +97,8 @@ class DS(Dataset):
             aa_coords = np.concatenate((aa_coords_intra, aa_coords_inter), 0)
 
             if self.cg_env:
-                cg_blobbs_inter = voxelize_gauss(np.dot(d['cg_positions_inter'], R.T), self.sigma_cg, self.grid)
+                cg_coords_inter = np.dot(d['cg_positions_inter'], R.T)
+                cg_blobbs_inter = voxelize_gauss(cg_coords_inter, self.sigma_cg, self.grid)
                 cg_features_inter = d['cg_inter_featvec'][:, :, None, None, None] * cg_blobbs_inter[:, None, :, :, :]
                 cg_features_inter = np.sum(cg_features_inter, 0)
                 features = np.concatenate((features, cg_features_inter), 0)
@@ -140,7 +141,7 @@ class DS(Dataset):
         #print("aa_coords_intra", aa_coords_intra.dtype)
         #print("aa_coords", aa_coords.dtype)
 
-        elems = (features, target, aa_coords_intra, aa_coords)
+        elems = (features, target, aa_coords_intra, aa_coords, cg_coords_inter)
 
         return elems, energy_ndx_aa, energy_ndx_cg
 
@@ -193,11 +194,13 @@ class GAN():
         self.cond = cfg.getboolean('model', 'cond')
         if self.cond and not self.data.pairs:
             raise Exception('conditional GAN can only be used with pairs of snapshots for both resolutions.')
+        self.cg_env = cfg.getboolean('model', 'cg_env')
+        self.n_env_mols = cfg.getint('universe', 'n_env_mols')
 
         self.feature_dim = self.ff_aa.n_atom_chns
-        if cfg.getint('universe', 'n_env_mols') != 0:
+        if self.n_env_mols != 0:
             self.feature_dim += self.ff_aa.n_atom_chns
-            if cfg.getboolean('model', 'cg_env'):
+            if self.cg_env:
                 self.feature_dim += self.ff_cg.n_atom_chns
 
         self.target_dim = self.ff_cg.n_atoms
@@ -272,6 +275,7 @@ class GAN():
 
         self.use_gp = cfg.getboolean('model', 'gp')
         self.use_ol = cfg.getboolean('model', 'ol')
+        self.use_energy = cfg.getboolean('model', 'energy')
 
 
 
@@ -289,7 +293,7 @@ class GAN():
         self.restored_model = False
         self.restore_latest_checkpoint()
 
-    def prior_weight(self):
+    def energy_weight(self):
         try:
             ndx = next(x[0] for x in enumerate(self.prior_schedule) if x[1] > self.epoch) - 1
         except:
@@ -409,7 +413,7 @@ class GAN():
         #print(l_energy)
         return torch.mean(b_energy), torch.mean(a_energy), torch.mean(d_energy), torch.mean(l_energy)
 
-    def get_energies_cg(self, atom_grid, energy_ndx):
+    def get_energies_cg(self, atom_grid, coords_inter, energy_ndx):
         coords = avg_blob(
             atom_grid,
             res=self.cfg.getint('grid', 'resolution'),
@@ -431,7 +435,10 @@ class GAN():
             d_energy = self.energy_cg.dih(coords, dih_ndx)
         else:
             d_energy = torch.zeros([], dtype=torch.float32, device=self.device)
-        if lj_ndx.size()[1]:
+        if self.cg_env and self.n_env_mols:
+            coords = torch.cat((coords, coords_inter), 1)
+            l_energy = self.energy_cg.lj(coords, lj_ndx)
+        elif lj_intra_ndx.size()[1]:
             l_energy = self.energy_cg.lj(coords, lj_intra_ndx)
         else:
             l_energy = torch.zeros([], dtype=torch.float32, device=self.device)
@@ -629,7 +636,7 @@ class GAN():
 
     def train_step_critic(self, elems):
 
-        features, target, _, _ = elems
+        features, target, _, _, _ = elems
 
         #c_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
@@ -713,7 +720,7 @@ class GAN():
 
     def train_step_gen(self, elems, energy_ndx_aa, energy_ndx_cg, backprop=True):
 
-        features, target, aa_coords_intra, aa_coords = elems
+        features, target, aa_coords_intra, aa_coords, cg_coords_inter = elems
 
         g_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
@@ -749,11 +756,11 @@ class GAN():
         #real_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, target_atom[:, None, :, :, :])
         #fake_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, fake_atom)
 
-        e_bond_cg, e_angle_cg, e_dih_cg, e_lj_cg = self.get_energies_cg(fake_mol, energy_ndx_cg)
+        e_bond_cg, e_angle_cg, e_dih_cg, e_lj_cg = self.get_energies_cg(fake_mol, cg_coords_inter, energy_ndx_cg)
         e_bond_aa, e_angle_aa, e_dih_aa, e_lj_aa = self.get_energies_aa(aa_coords_intra, aa_coords, energy_ndx_aa)
 
-        #if 1:
-        #    g_loss += e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg
+        if self.use_energy:
+            g_loss += self.energy_weight() * (e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg)
 
         #g_loss = g_wass + self.prior_weight() * energy_loss
         #g_loss = g_wass
