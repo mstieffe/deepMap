@@ -77,7 +77,6 @@ class DS(Dataset):
 
 
         aa_coords_intra = np.dot(d['aa_positions_intra'], R.T)
-        aa_coords_intra = np.array(aa_coords_intra)
         aa_blobbs_intra = voxelize_gauss(aa_coords_intra, self.sigma_aa, self.grid)
         aa_features_intra = d['aa_intra_featvec'][:, :, None, None, None] * aa_blobbs_intra[:, None, :, :, :]
 
@@ -113,28 +112,52 @@ class DS(Dataset):
         energy_ndx_cg = (d['cg_bond_ndx'], d['cg_ang_ndx'], d['cg_dih_ndx'], d['cg_lj_intra_ndx'],  d['cg_lj_ndx'])
 
         """
+        #print([a.type.name for a in d['aa_mol'].atoms])
         fig = plt.figure(figsize=(20, 20))
         n_chns = 4
         colours = ['red', 'black', 'green', 'blue']
         ax = fig.add_subplot(1, 1, 1, projection='3d')
         # ax.scatter(mol_aa.com[0], mol_aa.com[1],mol_aa.com[2], s=20, marker='o', color='blue', alpha=0.5)
+
         for i in range(0, self.resolution):
             for j in range(0, self.resolution):
                 for k in range(0, self.resolution):
-                    for n in range(0,2):
+                    for n in range(0,1):
                         #ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(target[n,i,j,k], 1.0))
-                        ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(features[n,i,j,k], 1.0))
+                        if features[n,i,j,k] > 0.1:
+                            ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(features[n,i,j,k], 1.0))
+        #carb_ndx = [1,4,7,10,13,16,19,22]
+        carb_ndx = [0,1,2,3]
+        print(aa_coords_intra)
+        for z in range(0, len(aa_coords_intra)):
+            if z in carb_ndx:
+                ax.scatter(aa_coords_intra[z, 0]/self.delta_s + self.resolution/2-0.5, aa_coords_intra[z, 1]/self.delta_s+ self.resolution/2-0.5, aa_coords_intra[z, 2]/self.delta_s+ self.resolution/2-0.5, s=8, marker='o', color='red')
+            #else:
+            #    ax.scatter(aa_coords_intra[z, 0]/self.delta_s + self.resolution/2, aa_coords_intra[z, 1]/self.delta_s+ self.resolution/2, aa_coords_intra[z, 2]/self.delta_s+ self.resolution/2, s=4, marker='o', color='blue')
+        """
+        """
+        f = d['aa_positions_intra']
+        carb_ndx = [1,4,7,10,13,16,19,22]
+        for z in range(0, len(f)):
+            if z in carb_ndx:
+                ax.scatter(f[z, 0], f[z, 1], f[z, 2], s=4, marker='o', color='red')
+            else:
+                ax.scatter(f[z, 0], f[z, 1], f[z, 2], s=4, marker='o', color='blue')
+        
 
-            #ax.set_xlim3d(-1.0, 1.0)
-            #ax.set_ylim3d(-1.0, 1.0)
-            #ax.set_zlim3d(-1.0, 1.0)
-            #ax.set_xticks(np.arange(-1, 1, step=0.5))
-            #ax.set_yticks(np.arange(-1, 1, step=0.5))
-            #ax.set_zticks(np.arange(-1, 1, step=0.5))
-            #ax.tick_params(labelsize=6)
-            #plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
+
+
+        ax.set_xlim3d(1.0, self.resolution)
+        ax.set_ylim3d(1.0, self.resolution)
+        ax.set_zlim3d(1.0, self.resolution)
+        #ax.set_xticks(np.arange(-1, 1, step=0.5))
+        #ax.set_yticks(np.arange(-1, 1, step=0.5))
+        #ax.set_zticks(np.arange(-1, 1, step=0.5))
+        #ax.tick_params(labelsize=6)
+        #plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
         plt.show()
         """
+
 
         #print("features", features.dtype)
         #print("target", target.dtype)
@@ -229,7 +252,10 @@ class GAN():
         prior_weights = self.cfg.get('prior', 'weights')
         self.prior_weights = [float(v) for v in prior_weights.split(",")]
         prior_schedule = self.cfg.get('prior', 'schedule')
-        self.prior_schedule = np.array([0] + [int(v) for v in prior_schedule.split(",")])
+        try:
+            self.prior_schedule = np.array([0] + [int(v) for v in prior_schedule.split(",")])
+        except:
+            self.prior_schedule = [0]
 
         self.ratio_bonded_nonbonded = cfg.getfloat('prior', 'ratio_bonded_nonbonded')
         self.prior_mode = cfg.get('prior', 'mode')
@@ -760,7 +786,17 @@ class GAN():
         e_bond_aa, e_angle_aa, e_dih_aa, e_lj_aa = self.get_energies_aa(aa_coords_intra, aa_coords, energy_ndx_aa)
 
         if self.use_energy:
-            g_loss += self.energy_weight() * (e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg)
+            if self.prior_mode == 'match':
+                e_bond_cg_target, e_angle_cg_target, e_dih_cg_target, e_lj_cg_target = self.get_energies_cg(target, cg_coords_inter, energy_ndx_cg)
+                b_loss = torch.mean(torch.abs(e_bond_cg_target - e_bond_cg))
+                a_loss = torch.mean(torch.abs(e_angle_cg_target - e_angle_cg))
+                d_loss = torch.mean(torch.abs(e_dih_cg_target - e_dih_cg))
+                l_loss = torch.mean(torch.abs(e_lj_cg_target - e_lj_cg))
+                g_loss += self.energy_weight() * (b_loss + a_loss + d_loss + l_loss)
+            elif self.prior_mode == 'min':
+                g_loss += self.energy_weight() * (e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg)
+
+
 
         #g_loss = g_wass + self.prior_weight() * energy_loss
         #g_loss = g_wass

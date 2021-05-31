@@ -41,7 +41,7 @@ class DS(Dataset):
 
         self.data = data
         self.train = train
-        self.n_interatoms = int(cfg.getint('universe', 'n_inter_atoms'))
+        self.n_interatoms = int(cfg.getint('universe', 'n_env_mols'))
 
         g = Mol_Generator(data, train=train, rand_rot=False)
 
@@ -183,7 +183,7 @@ class GAN():
         #model
         self.name = cfg.get('model', 'name')
 
-        if int(cfg.getint('universe', 'n_inter_atoms')) != 0:
+        if int(cfg.getint('universe', 'n_env_mols')) != 0:
             self.n_input = self.ff_aa.n_atom_chns * 2
         else:
             self.n_input = self.ff_aa.n_atom_chns
