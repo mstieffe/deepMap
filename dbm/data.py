@@ -70,7 +70,9 @@ class Data():
                 self.dict_val_aa[path_aa.stem], self.dict_val_cg[path_cg.stem] = self.get_sample_pairs(path_aa, path_cg, save=save)
         else:
             for path in self.dirs_val_aa:
+                print(path)
                 self.dict_val_aa[path.stem] = self.get_samples(path, res="aa", save=save)
+                print(self.dict_val_aa[path.stem])
             for path in self.dirs_val_cg:
                 self.dict_val_cg[path.stem] = self.get_samples(path, res="cg", save=save)
         self.samples_val_aa = list(itertools.chain.from_iterable(self.dict_val_aa.values()))

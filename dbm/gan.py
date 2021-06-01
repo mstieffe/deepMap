@@ -787,7 +787,13 @@ class GAN():
 
         if self.use_energy:
             if self.prior_mode == 'match':
+
                 e_bond_cg_target, e_angle_cg_target, e_dih_cg_target, e_lj_cg_target = self.get_energies_cg(target, cg_coords_inter, energy_ndx_cg)
+
+                #print("target")
+                #print(e_bond_cg_target, e_angle_cg_target, e_dih_cg_target, e_lj_cg_target)
+                #print("gen")
+                #print(e_bond_cg, e_angle_cg, e_dih_cg, e_lj_cg)
                 b_loss = torch.mean(torch.abs(e_bond_cg_target - e_bond_cg))
                 a_loss = torch.mean(torch.abs(e_angle_cg_target - e_angle_cg))
                 d_loss = torch.mean(torch.abs(e_dih_cg_target - e_dih_cg))

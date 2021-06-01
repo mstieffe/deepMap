@@ -350,3 +350,32 @@ class Universe():
                 self.box.dim[1][2]))
 
 
+    def write_coms_gro(self, filename):
+        with open(filename, 'w') as f:
+            f.write('{:s}\n'.format(self.name))
+            f.write('{:5d}\n'.format(len(self.mols)))
+
+            n = 1
+            for mol in self.mols:
+                f.write('{:5d}{:5s}{:>5s}{:5d}{:8.3f}{:8.3f}{:8.3f}{:8.3f}{:8.3f}{:8.3f}\n'.format(
+                    mol.index,
+                    mol.name,
+                    mol.name[0]+str(mol.index),
+                    n % 100000,
+                    mol.com[0],
+                    mol.com[1],
+                    mol.com[2],
+                    0, 0, 0))
+                n = n+1
+
+
+            f.write("{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}\n".format(
+                self.box.dim[0][0],
+                self.box.dim[1][1],
+                self.box.dim[2][2],
+                self.box.dim[1][0],
+                self.box.dim[2][0],
+                self.box.dim[0][1],
+                self.box.dim[2][1],
+                self.box.dim[0][2],
+                self.box.dim[1][2]))
