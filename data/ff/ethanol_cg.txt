@@ -1,0 +1,40 @@
+[general]
+; Name      	nrexcl		n_atoms
+octane_cg           1		1
+[/general]
+
+[atom_types]
+;name	channel   mass      charge       sigma      epsilon
+B	0       12.0110     0.0000          0.47     3.5
+[/atom_types]
+
+[bond_types]
+; i     j	channel  func        b0          kb
+[/bond_types]
+
+[angle_types]
+; i     j      k	channel  func       th0         cth
+
+[/angle_types]
+
+
+[dihedral_types]
+; i    j     k     l	channel func 
+[/dihedral_types]
+
+[lj_types]
+; i     j       channel
+B       B    -1
+[/lj_types]
+
+[bead_types]
+;name	channel
+C	2
+H	2
+O	2
+HC	2
+HS14	2
+OAlc	2
+CPos	2
+[/bead_types]
+

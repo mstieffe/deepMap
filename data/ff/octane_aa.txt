@@ -39,5 +39,7 @@ H       H    -1
 [bead_types]
 ;name	channel
 B	2
+H	2
+C	2
 [/bead_types]
 

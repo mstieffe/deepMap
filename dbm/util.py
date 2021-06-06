@@ -45,9 +45,10 @@ def voxel_gauss(coords, res=64, width=200, sigma=100.0, device=None):
 
 def voxelize_gauss(coord_inp, sigma, grid):
     coords = coord_inp[..., None, None, None]
-    voxels = np.exp(-1.0 * np.sum((grid - coords) * (grid - coords), axis=2) / sigma)
+    voxels = np.exp(-1.0 * np.sum((grid - coords) * (grid - coords), axis=1) / sigma)
     # voxels = np.transpose(voxels, [0, 2, 3, 4, 1])
-    return voxels.squeeze().astype(np.float32)
+    return voxels.astype(np.float32)
+    #return voxels.squeeze().astype(np.float32)
 
 
 def voxelize_gauss_batch(coord_inp, sigma, grid):
@@ -62,7 +63,7 @@ def make_grid_np(ds, grid_size):
     grid += 0.5
     grid *= ds
     X, Y, Z = np.meshgrid(grid, grid, grid, indexing="ij")
-    grid = np.stack([X, Y, Z])[None, None, ...]
+    grid = np.stack([X, Y, Z])[None,  ...]
     return grid
 
 

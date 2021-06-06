@@ -1,0 +1,63 @@
+[general]
+; Name      nrexcl	n_atoms
+ethanol           3	9
+[/general]
+
+  
+[atom_types]
+; name  channel      mass      charge     sigma        eps
+HS14    0   	1.00800     0.000      2.42000e-01  1.25520e-01    
+OAlc    2    	15.9994     0.000      3.55000e-01  2.92880e-01    
+CPos    1   	12.0110     0.000      3.55000e-01  2.92880e-01    
+  C     1      	12.0110     0.000      3.55000e-01  2.92880e-01
+ HC     0    	 1.0080     0.000      2.42000e-01  1.25520e-01
+[/atom_types]
+
+[bond_types]
+; i     j	channel  func        b0          kb
+HS14      OAlc	3        1       0.0972   1.9581e+07
+OAlc      CPos	4        1       0.1430   8.1800e+06
+CPos      HC	5        1       0.1100   1.2100e+07
+CPos      C	6        1       0.1520   5.4300e+06
+C         HC	5        1       0.1100   1.2100e+07
+[/bond_types]
+  
+[angle_types]
+; i     j      k	channel  func       th0         cth
+HS14    OAlc   CPos   	7	   1     109.50   450.00
+OAlc    CPos   HC      	8	   1     111.00   530.00
+OAlc    CPos   C      	9	   1     109.50   520.00
+CPos    C      HC      	10	   1     110.30   524.00
+HC      C      HC      	11	   1     108.53   443.00
+[/angle_types]
+
+[dihedral_types]
+; i    j     k     l	channel func mult     
+HS14   OAlc   CPos   C    	 12	2      0.00     1.26    3
+OAlc   CPos   C      HC    	 13	2      0.00     1.26    3
+[/dihedral_types]
+
+[lj_types]
+; i     j       channel
+HS14       HS14     14
+HS14       OAlc     15
+HS14       CPos     16
+HS14       C        16
+HS14       HC       14
+OAlc       OAlc     17
+OAlc       CPos     18
+OAlc       C        18
+OAlc       HC       15
+CPos       CPos     19
+CPos       C        19
+CPos       HC       20
+C          C        19
+C          HC       20
+HC         HC       14
+[/lj_types]
+   
+[bead_types]
+;name	channel
+B	21
+[/bead_types]
+

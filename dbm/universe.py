@@ -45,7 +45,7 @@ class Universe():
         # use mdtraj to load xyz information
         #add element to mdtraj (otherwise some will be identified as VS - virtual sides
         for atype in  list(self.ff.atom_types.values())+list(self.ff.bead_types.values()):
-            if atype.name not in Element._elements_by_symbol:
+            if atype.name.upper() not in Element._elements_by_symbol:
                 _ = Element(0, atype.name, atype.name, 0.0, 0.0)
         sample = md.load(str(path_dict['path']))
 
@@ -55,6 +55,13 @@ class Universe():
         self.box = Box(path_dict['path'], cfg.getfloat('universe', 'cutoff'))
         self.subbox_dict_atoms = self.box.empty_subbox_dict()
         self.subbox_dict_mols = self.box.empty_subbox_dict()
+
+        atype_name_dict, m = {}, 0
+        for line in read_between("[atoms]", "[/atoms]", path_dict['top_aa']):
+            if len(line.split()) >= 2:
+                atom_type = line.split()[1]
+                atype_name_dict[m] = atom_type
+                m += 1
 
         # Go through all molecules in cg file and initialize instances of mols and atoms
         self.atoms, self.beads, self.mols = [], [], []
@@ -66,10 +73,12 @@ class Universe():
 
             atoms = []
             for atom in res.atoms:
+                #print(self.ff.atom_types[atype_name_dict[atom.index % m]].name)
                 #print(atom.element.symbol)
                 pos = self.box.move_inside(sample.xyz[0, atom.index])
                 atoms.append(Atom(self.mols[-1],
-                                  self.ff.atom_types[atom.element.symbol],
+                                  #self.ff.atom_types[atom.element.symbol],
+                                  self.ff.atom_types[atype_name_dict[atom.index % m]],
                                   self.box.subbox(pos),
                                   pos))
                 self.mols[-1].add_atom(atoms[-1])
@@ -89,7 +98,8 @@ class Universe():
             beads = []
             for line in read_between("[atoms]", "[/atoms]", path_dict['top_cg']):
                 if len(line.split()) >= 2:
-                    bead_type = line.split()[1][:1]
+                    #bead_type = line.split()[1][:1]
+                    bead_type = line.split()[1]
                     beads.append(Bead(self.mols[-1],
                                       self.ff.bead_types[bead_type],
                                       pos=self.mols[-1].com))
