@@ -59,5 +59,10 @@ HC         HC       14
 [bead_types]
 ;name	channel
 B	21
+HS14    0  
+OAlc    2  
+CPos    1
+  C     1
+ HC     0
 [/bead_types]
 
