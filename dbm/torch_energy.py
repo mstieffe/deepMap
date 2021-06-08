@@ -209,6 +209,8 @@ class Energy_torch():
         #en_cut = 4 * epsilon * (c12_cut - c6_cut)
         #en = en - en_cut
         #en = torch.where(dis <= 1.0, en, torch.tensor(0.0))
+        #print("lj")
+        #print(en)
 
         #print(en)
         en = torch.sum(en, dim=1)

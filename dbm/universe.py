@@ -62,6 +62,7 @@ class Universe():
                 atom_type = line.split()[1]
                 atype_name_dict[m] = atom_type
                 m += 1
+        #print(atype_name_dict)
 
         # Go through all molecules in cg file and initialize instances of mols and atoms
         self.atoms, self.beads, self.mols = [], [], []
@@ -74,6 +75,7 @@ class Universe():
             atoms = []
             for atom in res.atoms:
                 #print(self.ff.atom_types[atype_name_dict[atom.index % m]].name)
+                #print(atom.element.symbol)
                 #print(atom.element.symbol)
                 pos = self.box.move_inside(sample.xyz[0, atom.index])
                 atoms.append(Atom(self.mols[-1],

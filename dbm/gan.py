@@ -104,7 +104,7 @@ class DS(Dataset):
 
         cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
         target = cg_positions_intra
-
+        #print(target)
         #print(target.shape)
         #print(features.shape)
 
@@ -283,7 +283,7 @@ class GAN():
             print("Using tiny generator without noise")
 
         if cfg.getint('grid', 'resolution') == 8:
-            self.critic = model.C_tiny(in_channels=self.critic_dim,
+            self.critic = model.C_tiny_mbd(in_channels=self.critic_dim,
                                               start_channels=self.cfg.getint('model', 'n_chns'),
                                               fac=1, sn=self.cfg.getint('model', 'sn_crit'),
                                               device=device)
@@ -447,7 +447,7 @@ class GAN():
             sigma=self.cfg.getfloat('grid', 'sigma_cg'),
             device=self.device,
         )
-        #print(coords)
+
         bond_ndx, angle_ndx, dih_ndx, lj_intra_ndx, lj_ndx = energy_ndx
         if bond_ndx.size()[1]:
             b_energy = self.energy_cg.bond(coords, bond_ndx)

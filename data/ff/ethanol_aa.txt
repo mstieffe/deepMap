@@ -28,7 +28,9 @@ HS14    OAlc   CPos   	7	   1     109.50   450.00
 OAlc    CPos   HC      	8	   1     111.00   530.00
 OAlc    CPos   C      	9	   1     109.50   520.00
 CPos    C      HC      	10	   1     110.30   524.00
+C       CPos   HC      	10	   1     110.30   524.00
 HC      C      HC      	11	   1     108.53   443.00
+HC      CPos   HC      	11	   1     108.53   443.00
 [/angle_types]
 
 [dihedral_types]
