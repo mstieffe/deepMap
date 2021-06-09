@@ -30,6 +30,7 @@ B       B    -1
 
 [bead_types]
 ;name	channel
+B	0
 C	1
 H	2
 [/bead_types]

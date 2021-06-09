@@ -29,7 +29,7 @@ class Universe():
         start = timer()
 
         self.name = path_dict['file_name']
-
+        print(self.name)
         #forcefield
         self.ff = ff
 
@@ -329,6 +329,37 @@ class Universe():
             aa_pos = np.where(repl[0,0,0,:, np.newaxis], aa_pos, t_pos)
             if only_first:
                 break
+
+    def write_aa_gro_file(self, filename):
+        with open(filename, 'w') as f:
+            f.write('{:s}\n'.format(self.name))
+            f.write('{:5d}\n'.format(self.n_beads))
+
+            n = 1
+            for mol in self.mols:
+                for a in mol.atoms:
+                    f.write('{:5d}{:5s}{:>5s}{:5d}{:8.3f}{:8.3f}{:8.3f}{:8.3f}{:8.3f}{:8.3f}\n'.format(
+                        a.mol.index,
+                        a.mol.name,
+                        a.type.name+str(a.mol.atoms.index(a)+1),
+                        n % 100000,
+                        a.pos[0],
+                        a.pos[1],
+                        a.pos[2],
+                        0, 0, 0))
+                    n = n+1
+
+
+            f.write("{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}{:10.5f}\n".format(
+                self.box.dim[0][0],
+                self.box.dim[1][1],
+                self.box.dim[2][2],
+                self.box.dim[1][0],
+                self.box.dim[2][0],
+                self.box.dim[0][1],
+                self.box.dim[2][1],
+                self.box.dim[0][2],
+                self.box.dim[1][2]))
 
     def write_gro_file(self, filename):
         with open(filename, 'w') as f:
