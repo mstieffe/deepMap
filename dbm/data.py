@@ -27,114 +27,115 @@ class Data():
 
 
         #forcefield
-        self.ff_aa_name = cfg.get('data', 'ff_aa')
-        self.ff_aa_path = Path("./data/ff") / self.ff_aa_name
-        self.ff_aa = FF(self.ff_aa_path)
+        self.ff_inp_name = cfg.get('data', 'ff_inp')
+        self.ff_inp_path = Path("./data/ff") / self.ff_inp_name
+        self.ff_inp = FF(self.ff_inp_path)
 
-        self.ff_cg_name = cfg.get('data', 'ff_cg')
-        self.ff_cg_path = Path("./data/ff") / self.ff_cg_name
-        self.ff_cg = FF(self.ff_cg_path)
+        self.ff_out_name = cfg.get('data', 'ff_out')
+        self.ff_out_path = Path("./data/ff") / self.ff_out_name
+        self.ff_out = FF(self.ff_out_path)
 
-        self.top_aa = Path("./data/top") / cfg.get('data', 'top_aa')
-        self.top_cg = Path("./data/top") / cfg.get('data', 'top_cg')
+        self.top_inp = Path("./data/top") / cfg.get('data', 'top_inp')
+        self.top_out = Path("./data/top") / cfg.get('data', 'top_out')
 
-        self.desc = '_align={}_cutoff={}_kick={}_ff_aa={}_ff_cg={}.pkl'.format(self.align,
+        self.desc = '_align={}_cutoff={}_kick={}_ff_inp={}_ff_out={}.pkl'.format(self.align,
                                                                                 self.cutoff,
                                                                                 self.kick,
-                                                                                self.ff_aa_name,
-                                                                                self.ff_cg_name)
+                                                                                self.ff_inp_name,
+                                                                                self.ff_out_name)
 
         #samples
         self.data_dir = Path("./data/")
-        self.dirs_train_aa = [Path("./data/reference_snapshots/") / d.replace(" ", "") for d in cfg.get('data', 'train_data_aa').split(",")]
-        self.dirs_val_aa = [Path("./data/reference_snapshots/") / d.replace(" ", "") for d in cfg.get('data', 'val_data_aa').split(",")]
-        self.dirs_train_cg = [Path("./data/reference_snapshots/") / d.replace(" ", "") for d in cfg.get('data', 'train_data_cg').split(",")]
-        self.dirs_val_cg = [Path("./data/reference_snapshots/") / d.replace(" ", "") for d in cfg.get('data', 'val_data_cg').split(",")]
+        self.dirs_train_inp = [Path("./data/reference_snapshots/") / d.replace(" ", "") for d in cfg.get('data', 'train_data_inp').split(",")]
+        self.dirs_val_inp = [Path("./data/reference_snapshots/") / d.replace(" ", "") for d in cfg.get('data', 'val_data_inp').split(",")]
+        self.dirs_train_out = [Path("./data/reference_snapshots/") / d.replace(" ", "") for d in cfg.get('data', 'train_data_out').split(",")]
+        self.dirs_val_out = [Path("./data/reference_snapshots/") / d.replace(" ", "") for d in cfg.get('data', 'val_data_out').split(",")]
         self.dir_processed = Path("./data/processed")
         self.dir_processed.mkdir(exist_ok=True)
+        self.dir_mapping = Path("./data/mapping/")
 
         #self.samples_train, self.samples_val = [], []
-        self.dict_train_aa, self.dict_val_aa, self.dict_train_cg, self.dict_val_cg = {}, {}, {}, {}
+        self.dict_train_inp, self.dict_val_inp, self.dict_train_out, self.dict_val_out = {}, {}, {}, {}
         if self.pairs:
-            for path_aa, path_cg in zip(self.dirs_train_aa, self.dirs_train_cg):
-                self.dict_train_aa[path_aa.stem], self.dict_train_cg[path_cg.stem] = self.get_sample_pairs(path_aa, path_cg, save=save)
+            for path_inp, path_out in zip(self.dirs_train_inp, self.dirs_train_out):
+                self.dict_train_inp[path_inp.stem], self.dict_train_out[path_out.stem] = self.get_sample_pairs(path_inp, path_out, save=save)
         else:
-            for path in self.dirs_train_aa:
-                self.dict_train_aa[path.stem] = self.get_samples(path, res="aa", save=save)
-            for path in self.dirs_train_cg:
-                self.dict_train_cg[path.stem] = self.get_samples(path, res="cg", save=save)
-        self.samples_train_aa = list(itertools.chain.from_iterable(self.dict_train_aa.values()))
-        self.samples_train_cg = list(itertools.chain.from_iterable(self.dict_train_cg.values()))
+            for path in self.dirs_train_inp:
+                self.dict_train_inp[path.stem] = self.get_samples(path, res="inp", save=save)
+            for path in self.dirs_train_out:
+                self.dict_train_out[path.stem] = self.get_samples(path, res="out", save=save)
+        self.samples_train_inp = list(itertools.chain.from_iterable(self.dict_train_inp.values()))
+        self.samples_train_out = list(itertools.chain.from_iterable(self.dict_train_out.values()))
         if cfg.getboolean('data', 'pairs'):
-            for path_aa, path_cg in zip(self.dirs_val_aa, self.dirs_val_cg):
-                self.dict_val_aa[path_aa.stem], self.dict_val_cg[path_cg.stem] = self.get_sample_pairs(path_aa, path_cg, save=save)
+            for path_inp, path_out in zip(self.dirs_val_inp, self.dirs_val_out):
+                self.dict_val_inp[path_inp.stem], self.dict_val_out[path_out.stem] = self.get_sample_pairs(path_inp, path_out, save=save)
         else:
-            for path in self.dirs_val_aa:
+            for path in self.dirs_val_inp:
                 print(path)
-                self.dict_val_aa[path.stem] = self.get_samples(path, res="aa", save=save)
-                print(self.dict_val_aa[path.stem])
-            for path in self.dirs_val_cg:
-                self.dict_val_cg[path.stem] = self.get_samples(path, res="cg", save=save)
-        self.samples_val_aa = list(itertools.chain.from_iterable(self.dict_val_aa.values()))
-        self.samples_val_cg = list(itertools.chain.from_iterable(self.dict_val_cg.values()))
+                self.dict_val_inp[path.stem] = self.get_samples(path, res="inp", save=save)
+                print(self.dict_val_inp[path.stem])
+            for path in self.dirs_val_out:
+                self.dict_val_out[path.stem] = self.get_samples(path, res="out", save=save)
+        self.samples_val_inp = list(itertools.chain.from_iterable(self.dict_val_inp.values()))
+        self.samples_val_out = list(itertools.chain.from_iterable(self.dict_val_out.values()))
 
         #find maximums for padding
         #self.max = self.get_max_dict()
 
         print("Successfully created universe! This took ", timer()-start, "secs")
 
-    def get_sample_pairs(self, path_aa, path_cg, save=False):
-        name_aa = path_aa.stem + "_" + self.desc
-        processed_path_aa = self.dir_processed / name_aa
-        name_cg = path_cg.stem + "_" + self.desc
-        processed_path_cg = self.dir_processed / name_cg
+    def get_sample_pairs(self, path_inp, path_out, save=False):
+        name_inp = path_inp.stem + "_" + self.desc
+        processed_path_inp = self.dir_processed / name_inp
+        name_out = path_out.stem + "_" + self.desc
+        processed_path_out = self.dir_processed / name_out
 
-        for p in path_cg.glob('*.gro'):
-            aa_file = path_aa / p.name
-            if not aa_file.exists():
-                raise Exception('can not generate sample pairs. no matching files found for ', aa_file)
+        for p in path_out.glob('*.gro'):
+            inp_file = path_inp / p.name
+            if not inp_file.exists():
+                raise Exception('can not generate sample pairs. no matching files found for ', inp_file)
 
-        if processed_path_cg.exists() and processed_path_aa.exists():
-            with open(processed_path_aa, 'rb') as input:
-                samples_aa = pickle.load(input)
-            print("Loaded train universe from " + str(processed_path_aa))
-            with open(processed_path_cg, 'rb') as input:
-                samples_cg = pickle.load(input)
-            print("Loaded train universe from " + str(processed_path_cg))
+        if processed_path_out.exists() and processed_path_inp.exists():
+            with open(processed_path_inp, 'rb') as input:
+                samples_inp = pickle.load(input)
+            print("Loaded train universe from " + str(processed_path_inp))
+            with open(processed_path_out, 'rb') as input:
+                samples_out = pickle.load(input)
+            print("Loaded train universe from " + str(processed_path_out))
         else:
-            samples_aa, samples_cg = [], []
+            samples_inp, samples_out = [], []
             # dir = path / res
-            for p_aa, p_cg in zip(path_aa.glob('*.gro'), path_cg.glob('*.gro')):
-                # path_dict = {'data_dir': self.data_dir, 'path': p, 'file_name': p.stem, 'top_aa': self.top_aa, 'top_cg': self.top_cg}
-                path_dict_aa = {'data_dir': self.data_dir, 'top_aa': self.top_aa, 'top_cg': self.top_cg, 'path': p_aa, 'file_name': p_aa.stem}
-                path_dict_cg = {'data_dir': self.data_dir, 'top_aa': self.top_cg, 'top_cg': self.top_aa, 'path': p_cg, 'file_name': p_cg.stem}
+            for p_inp, p_out in zip(path_inp.glob('*.gro'), path_out.glob('*.gro')):
+                # path_dict = {'data_dir': self.data_dir, 'path': p, 'file_name': p.stem, 'top_inp': self.top_inp, 'top_out': self.top_out}
+                path_dict_inp = {'data_dir': self.data_dir, 'top_inp': self.top_inp, 'top_out': self.top_out, 'path': p_inp, 'file_name': p_inp.stem}
+                path_dict_out = {'data_dir': self.data_dir, 'top_inp': self.top_out, 'top_out': self.top_inp, 'path': p_out, 'file_name': p_out.stem}
 
-                u_aa = Universe(self.cfg, path_dict_aa, self.ff_aa)
-                coms = [m.com for m in u_aa.mols]
-                u_cg = Universe(self.cfg, path_dict_cg, self.ff_cg, coms=coms)
+                u_inp = Universe(self.cfg, path_dict_inp, self.ff_inp)
+                coms = [m.com for m in u_inp.mols]
+                u_out = Universe(self.cfg, path_dict_out, self.ff_out, coms=coms)
 
-                if len(u_aa.mols) != len(u_cg.mols):
-                    raise Exception('number of molecules does not match for ', p_aa, ' and ', p_cg)
+                if len(u_inp.mols) != len(u_out.mols):
+                    raise Exception('number of molecules does not match for ', p_inp, ' and ', p_out)
 
-                samples_aa.append(u_aa)
-                samples_cg.append(u_cg)
+                samples_inp.append(u_inp)
+                samples_out.append(u_out)
             if save:
-                with open(processed_path_aa, 'wb') as output:
-                    pickle.dump(samples_aa, output, pickle.HIGHEST_PROTOCOL)
-                with open(processed_path_cg, 'wb') as output:
-                    pickle.dump(samples_cg, output, pickle.HIGHEST_PROTOCOL)
-        return samples_aa, samples_cg
+                with open(processed_path_inp, 'wb') as output:
+                    pickle.dump(samples_inp, output, pickle.HIGHEST_PROTOCOL)
+                with open(processed_path_out, 'wb') as output:
+                    pickle.dump(samples_out, output, pickle.HIGHEST_PROTOCOL)
+        return samples_inp, samples_out
 
-    def get_samples(self, path, res="aa", save=False):
+    def get_samples(self, path, res="inp", save=False):
         name = path.stem + "_" + res + "_" + self.desc
         processed_path = self.dir_processed / name
 
-        if res == "aa":
-            ff = self.ff_aa
-            path_dict = {'data_dir': self.data_dir, 'top_aa': self.top_aa, 'top_cg': self.top_cg}
+        if res == "inp":
+            ff = self.ff_inp
+            path_dict = {'data_dir': self.data_dir, 'top_inp': self.top_inp, 'top_out': self.top_out}
         else:
-            ff = self.ff_cg
-            path_dict = {'data_dir': self.data_dir, 'top_aa': self.top_cg, 'top_cg': self.top_aa}
+            ff = self.ff_out
+            path_dict = {'data_dir': self.data_dir, 'top_inp': self.top_out, 'top_out': self.top_inp}
 
         if processed_path.exists():
             with open(processed_path, 'rb') as input:
@@ -144,7 +145,7 @@ class Data():
             samples = []
             #dir = path / res
             for p in path.glob('*.gro'):
-                #path_dict = {'data_dir': self.data_dir, 'path': p, 'file_name': p.stem, 'top_aa': self.top_aa, 'top_cg': self.top_cg}
+                #path_dict = {'data_dir': self.data_dir, 'path': p, 'file_name': p.stem, 'top_inp': self.top_inp, 'top_out': self.top_out}
                 path_dict['path'] = p
                 path_dict['file_name'] = p.stem
                 u = Universe(self.cfg, path_dict, ff)
@@ -172,14 +173,14 @@ class Data():
 
         for sample in samples:
             for bead in sample.beads:
-                max_dict['seq_len'] = max(len(sample.aa_seq_heavy[bead]), len(sample.aa_seq_hydrogens[bead]), max_dict['seq_len'])
+                max_dict['seq_len'] = max(len(sample.inp_seq_heavy[bead]), len(sample.inp_seq_hydrogens[bead]), max_dict['seq_len'])
                 max_dict['beads_loc_env'] = max(len(sample.loc_envs[bead].beads), max_dict['beads_loc_env'])
                 max_dict['atoms_loc_env'] = max(len(sample.loc_envs[bead].atoms), max_dict['atoms_loc_env'])
 
-                for aa_seq in [sample.aa_seq_heavy[bead], sample.aa_seq_hydrogens[bead]]:
+                for inp_seq in [sample.inp_seq_heavy[bead], sample.inp_seq_hydrogens[bead]]:
                     bonds_ndx, angles_ndx, dihs_ndx, ljs_ndx = [], [], [], []
-                    for atom in aa_seq:
-                        f = sample.aa_features[atom]
+                    for atom in inp_seq:
+                        f = sample.inp_features[atom]
                         max_dict['bonds_per_atom'] = max(len(f.energy_ndx_gibbs['bonds']), max_dict['bonds_per_atom'])
                         max_dict['angles_per_atom'] = max(len(f.energy_ndx_gibbs['angles']), max_dict['angles_per_atom'])
                         max_dict['dihs_per_atom'] = max(len(f.energy_ndx_gibbs['dihs']), max_dict['dihs_per_atom'])

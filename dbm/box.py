@@ -18,9 +18,9 @@ class Box():
         self.subbox_size = self.get_subbox_size(cutoff)
         self.subbox_size_inv = np.linalg.inv(self.subbox_size)
 
-        print(self.max_v1_sub)
-        print(self.max_v2_sub)
-        print(self.max_v3_sub)
+        #print(self.max_v1_sub)
+        #print(self.max_v2_sub)
+        #print(self.max_v3_sub)
 
     def get_box_dim(self, file):
         # reads the box dimensions from the last line in the gro file

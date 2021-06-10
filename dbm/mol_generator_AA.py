@@ -12,76 +12,76 @@ class Mol_Generator_AA():
         self.rand_rot = rand_rot
 
         if train:
-            self.samples_aa = self.data.samples_train_aa
-            #self.samples_cg = self.data.samples_train_cg
+            self.samples_inp = self.data.samples_train_inp
+            #self.samples_out = self.data.samples_train_out
         else:
-            self.samples_aa = self.data.samples_val_aa
-            #self.samples_cg = self.data.samples_val_cg
-        self.mols_aa, self.mols_cg = [], []
-        for s in self.samples_aa:
-            self.mols_aa += s.mols
-        #for s in self.samples_cg:
-        #    self.mols_cg += s.mols
-        #for mols in [s.mols for s in self.samples_aa]:
-        #    self.mols_aa += mols
-        #for mols in [s.mols for s in self.samples_cg]:
-        #    self.mols_cg += mols
+            self.samples_inp = self.data.samples_val_inp
+            #self.samples_out = self.data.samples_val_out
+        self.mols_inp, self.mols_out = [], []
+        for s in self.samples_inp:
+            self.mols_inp += s.mols
+        #for s in self.samples_out:
+        #    self.mols_out += s.mols
+        #for mols in [s.mols for s in self.samples_inp]:
+        #    self.mols_inp += mols
+        #for mols in [s.mols for s in self.samples_out]:
+        #    self.mols_out += mols
 
-        random.shuffle(self.mols_aa)
+        random.shuffle(self.mols_inp)
 
     def __iter__(self):
 
         #go through every mol
-        for mol_aa in self.mols_aa:
+        for mol_inp in self.mols_inp:
             d = {}
 
-            positions_intra_aa = []
-            for a in mol_aa.atoms:
-                positions_intra_aa.append(mol_aa.box.diff_vec(a.pos - mol_aa.com))
+            positions_intra_inp = []
+            for a in mol_inp.atoms:
+                positions_intra_inp.append(mol_inp.box.diff_vec(a.pos - mol_inp.com))
 
-            positions_inter_aa, positions_inter_cg = [], []
-            for a in mol_aa.intermolecular_atoms:
-                positions_inter_aa.append(mol_aa.box.diff_vec(a.pos - mol_aa.com))
+            positions_inter_inp, positions_inter_out = [], []
+            for a in mol_inp.intermolecular_atoms:
+                positions_inter_inp.append(mol_inp.box.diff_vec(a.pos - mol_inp.com))
 
-            for a in mol_aa.intermolecular_beads:
-                positions_inter_cg.append(mol_aa.box.diff_vec(a.pos - mol_aa.com))
+            for a in mol_inp.intermolecular_beads:
+                positions_inter_out.append(mol_inp.box.diff_vec(a.pos - mol_inp.com))
 
             #align
-            positions_intra_aa = np.dot(positions_intra_aa, mol_aa.rot_mat)
+            positions_intra_inp = np.dot(positions_intra_inp, mol_inp.rot_mat)
             if self.data.n_env_mols:
-                positions_inter_aa = np.dot(positions_inter_aa, mol_aa.rot_mat)
+                positions_inter_inp = np.dot(positions_inter_inp, mol_inp.rot_mat)
 
-                positions_inter_cg = np.dot(positions_inter_cg, mol_aa.rot_mat)
+                positions_inter_out = np.dot(positions_inter_out, mol_inp.rot_mat)
 
 
-            atoms = list(mol_aa.atoms) + list(mol_aa.intermolecular_atoms)
+            atoms = list(mol_inp.atoms) + list(mol_inp.intermolecular_atoms)
 
             #energy ndx
-            aa_intra_index_dict = dict(zip(mol_aa.atoms, range(0, len(mol_aa.atoms))))
-            aa_index_dict = dict(zip(atoms, range(0, len(atoms))))
+            inp_intra_index_dict = dict(zip(mol_inp.atoms, range(0, len(mol_inp.atoms))))
+            inp_index_dict = dict(zip(atoms, range(0, len(atoms))))
 
-            aa_bond_ndx, aa_ang_ndx, aa_dih_ndx, aa_lj_intra_ndx,  aa_lj_ndx = self.energy_ndx(mol_aa, aa_intra_index_dict, aa_index_dict)
+            inp_bond_ndx, inp_ang_ndx, inp_dih_ndx, inp_lj_intra_ndx,  inp_lj_ndx = self.energy_ndx(mol_inp, inp_intra_index_dict, inp_index_dict)
 
             #features (atom types)
-            aa_intra_featvec = self.featvec(mol_aa.atoms, self.data.ff_aa)
-            aa_inter_featvec = self.featvec(mol_aa.intermolecular_atoms, self.data.ff_aa)
+            inp_intra_featvec = self.featvec(mol_inp.atoms, self.data.ff_inp)
+            inp_inter_featvec = self.featvec(mol_inp.intermolecular_atoms, self.data.ff_inp)
 
-            cg_inter_featvec = self.featvec(mol_aa.intermolecular_beads, self.data.ff_cg)
+            out_inter_featvec = self.featvec(mol_inp.intermolecular_beads, self.data.ff_out)
 
 
             d={
-                "aa_positions_intra": np.array(positions_intra_aa, dtype=np.float32),
-                "aa_positions_inter": np.array(positions_inter_aa, dtype=np.float32),
-                "cg_positions_inter": np.array(positions_inter_cg, dtype=np.float32),
-                "aa_intra_featvec": np.array(aa_intra_featvec, dtype=np.float32),
-                "aa_inter_featvec": np.array(aa_inter_featvec, dtype=np.float32),
-                "cg_inter_featvec": np.array(cg_inter_featvec, dtype=np.float32),
-                "aa_bond_ndx": np.array(aa_bond_ndx, dtype=np.int64),
-                "aa_ang_ndx": np.array(aa_ang_ndx, dtype=np.int64),
-                "aa_dih_ndx": np.array(aa_dih_ndx, dtype=np.int64),
-                "aa_lj_ndx": np.array(aa_lj_ndx, dtype=np.int64),
-                "aa_lj_intra_ndx": np.array(aa_lj_intra_ndx, dtype=np.int64),
-                "aa_mol": mol_aa
+                "inp_positions_intra": np.array(positions_intra_inp, dtype=np.float32),
+                "inp_positions_inter": np.array(positions_inter_inp, dtype=np.float32),
+                "out_positions_inter": np.array(positions_inter_out, dtype=np.float32),
+                "inp_intra_featvec": np.array(inp_intra_featvec, dtype=np.float32),
+                "inp_inter_featvec": np.array(inp_inter_featvec, dtype=np.float32),
+                "out_inter_featvec": np.array(out_inter_featvec, dtype=np.float32),
+                "inp_bond_ndx": np.array(inp_bond_ndx, dtype=np.int64),
+                "inp_ang_ndx": np.array(inp_ang_ndx, dtype=np.int64),
+                "inp_dih_ndx": np.array(inp_dih_ndx, dtype=np.int64),
+                "inp_lj_ndx": np.array(inp_lj_ndx, dtype=np.int64),
+                "inp_lj_intra_ndx": np.array(inp_lj_intra_ndx, dtype=np.int64),
+                "inp_mol": mol_inp
             }
 
             """
@@ -89,13 +89,13 @@ class Mol_Generator_AA():
             n_chns = 4
             colours = ['red', 'black', 'green', 'blue']
 
-            coords = [np.array(positions_intra_aa), np.array(positions_inter_aa), np.array(positions_intra_cg), np.array(positions_inter_cg)]
-            features = [list(aa_intra_featvec), list(aa_inter_featvec), list(cg_intra_featvec), list(cg_inter_featvec)]
+            coords = [np.array(positions_intra_inp), np.array(positions_inter_inp), np.array(positions_intra_out), np.array(positions_inter_out)]
+            features = [list(inp_intra_featvec), list(inp_inter_featvec), list(out_intra_featvec), list(out_inter_featvec)]
             for c in range(0, n_chns):
 
                 ax = fig.add_subplot(int(np.ceil(np.sqrt(n_chns))),int(np.ceil(np.sqrt(n_chns))), c+1, projection='3d')
                 pos = coords[c]
-                #ax.scatter(mol_aa.com[0], mol_aa.com[1],mol_aa.com[2], s=20, marker='o', color='blue', alpha=0.5)
+                #ax.scatter(mol_inp.com[0], mol_inp.com[1],mol_inp.com[2], s=20, marker='o', color='blue', alpha=0.5)
                 for n in range(0, len(pos)):
                     colour_ndx = features[c][n].tolist().index(1.0)
                     ax.scatter(pos[n,0], pos[n,1], pos[n,2], s=5, marker='o', color=colours[colour_ndx], alpha = 0.5)
@@ -182,11 +182,11 @@ class Mol_Generator_AA():
         #rotation matrix
         a = math.cos(theta / 2.0)
         b, c, d = -v_rot * math.sin(theta / 2.0)
-        aa, bb, cc, dd = a * a, b * b, c * c, d * d
+        inp, bb, cc, dd = a * a, b * b, c * c, d * d
         bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
-        rot_mat = np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
-                         [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
-                         [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
+        rot_mat = np.array([[inp + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+                         [2 * (bc - ad), inp + cc - bb - dd, 2 * (cd + ab)],
+                         [2 * (bd + ac), 2 * (cd - ab), inp + dd - bb - cc]])
 
         rot_mat = rot_mat.astype('float32')
 

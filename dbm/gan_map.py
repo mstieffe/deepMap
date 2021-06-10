@@ -770,7 +770,7 @@ class GAN():
 
     def train_step_gen(self, elems, energy_ndx_aa, energy_ndx_cg, backprop=True):
 
-        gen_input, _, aa_features_inter, aa_coords_intra, aa_coords, cg_coords_inter = elems
+        gen_input, crit_input_real, aa_features_inter, aa_coords_intra, aa_coords, cg_coords_inter = elems
 
         g_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
@@ -817,7 +817,7 @@ class GAN():
         if self.use_energy:
             if self.prior_mode == 'match':
 
-                e_bond_cg_target, e_angle_cg_target, e_dih_cg_target, e_lj_cg_target = self.get_energies_cg(target, cg_coords_inter, energy_ndx_cg)
+                e_bond_cg_target, e_angle_cg_target, e_dih_cg_target, e_lj_cg_target = self.get_energies_cg(crit_input_real[:, :self.ff_cg.n_atoms], cg_coords_inter, energy_ndx_cg)
 
                 #print("target")
                 #print(e_bond_cg_target, e_angle_cg_target, e_dih_cg_target, e_lj_cg_target)

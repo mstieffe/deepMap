@@ -76,7 +76,7 @@ class DS(Dataset):
         d = self.elems[ndx]
 
 
-        inp_coords_intra = np.dot(d['inp_positions_intra'], R.T)
+        inp_coords_intra = d['inp_positions_intra']
         inp_blobbs_intra = voxelize_gauss(inp_coords_intra, self.sigma_inp, self.grid)
         inp_features_intra = d['inp_intra_featvec'][:, :, None, None, None] * inp_blobbs_intra[:, None, :, :, :]
 
@@ -102,6 +102,7 @@ class DS(Dataset):
                 out_features_inter = np.sum(out_features_inter, 0)
                 features = np.concatenate((features, out_features_inter), 0)
 
+        out_coords_intra = d['out_positions_intra']
         out_positions_intra = voxelize_gauss(np.dot(d['out_positions_intra'], R.T), self.sigma_out, self.grid)
         target = out_positions_intra
         #print(target)
@@ -111,60 +112,7 @@ class DS(Dataset):
         energy_ndx_inp = (d['inp_bond_ndx'], d['inp_ang_ndx'], d['inp_dih_ndx'], d['inp_lj_intra_ndx'], d['inp_lj_ndx'])
         energy_ndx_out = (d['out_bond_ndx'], d['out_ang_ndx'], d['out_dih_ndx'], d['out_lj_intra_ndx'],  d['out_lj_ndx'])
 
-        """
-        #print([a.type.name for a in d['inp_mol'].atoms])
-        fig = plt.figure(figsize=(20, 20))
-        n_chns = 4
-        colours = ['red', 'black', 'green', 'blue']
-        ax = fig.add_subplot(1, 1, 1, projection='3d')
-        # ax.scatter(mol_inp.com[0], mol_inp.com[1],mol_inp.com[2], s=20, marker='o', color='blue', alpha=0.5)
-
-        for i in range(0, self.resolution):
-            for j in range(0, self.resolution):
-                for k in range(0, self.resolution):
-                    for n in range(0,1):
-                        #ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(target[n,i,j,k], 1.0))
-                        if features[n,i,j,k] > 0.1:
-                            ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(features[n,i,j,k], 1.0))
-        #carb_ndx = [1,4,7,10,13,16,19,22]
-        carb_ndx = [0,1,2,3]
-        print(inp_coords_intra)
-        for z in range(0, len(inp_coords_intra)):
-            if z in carb_ndx:
-                ax.scatter(inp_coords_intra[z, 0]/self.delta_s + self.resolution/2-0.5, inp_coords_intra[z, 1]/self.delta_s+ self.resolution/2-0.5, inp_coords_intra[z, 2]/self.delta_s+ self.resolution/2-0.5, s=8, marker='o', color='red')
-            #else:
-            #    ax.scatter(inp_coords_intra[z, 0]/self.delta_s + self.resolution/2, inp_coords_intra[z, 1]/self.delta_s+ self.resolution/2, inp_coords_intra[z, 2]/self.delta_s+ self.resolution/2, s=4, marker='o', color='blue')
-        """
-        """
-        f = d['inp_positions_intra']
-        carb_ndx = [1,4,7,10,13,16,19,22]
-        for z in range(0, len(f)):
-            if z in carb_ndx:
-                ax.scatter(f[z, 0], f[z, 1], f[z, 2], s=4, marker='o', color='red')
-            else:
-                ax.scatter(f[z, 0], f[z, 1], f[z, 2], s=4, marker='o', color='blue')
-        
-
-
-
-        ax.set_xlim3d(1.0, self.resolution)
-        ax.set_ylim3d(1.0, self.resolution)
-        ax.set_zlim3d(1.0, self.resolution)
-        #ax.set_xticks(np.arange(-1, 1, step=0.5))
-        #ax.set_yticks(np.arange(-1, 1, step=0.5))
-        #ax.set_zticks(np.arange(-1, 1, step=0.5))
-        #ax.tick_params(labelsize=6)
-        #plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
-        plt.show()
-        """
-
-
-        #print("features", features.dtype)
-        #print("target", target.dtype)
-        #print("inp_coords_intra", inp_coords_intra.dtype)
-        #print("inp_coords", inp_coords.dtype)
-
-        elems = (features, target, inp_coords_intra, inp_coords, out_coords_inter)
+        elems = (inp_coords_intra, out_coords_intra)
 
         return elems, energy_ndx_inp, energy_ndx_out
 
@@ -238,7 +186,6 @@ class GAN():
             raise Exception("reconstruction error only applicable when going from lower to higher resolution")
         else:
             self.mapping = {}
-            self.recon_weight = cfg.getfloat('prior', 'rec')
             map_file = self.data.dir_mapping / self.cfg.get('model', 'map_file')
             if map_file.exists():
                 for line in read_between("[map]", "[/map]", self.data.dir_mapping / self.cfg.get('model', 'map_file')):
@@ -401,11 +348,7 @@ class GAN():
 
         recon_cg_coords = recon_cg_coords / self.inp_masses
 
-        recon_loss = cg_coords - recon_cg_coords
-        recon_loss = recon_loss**2
-        recon_loss = torch.sum(recon_loss, dim=(1,2))
-
-        return torch.mean(recon_loss)
+        return recon_cg_coords
 
     def generator_loss(self, critic_fake):
         return (-1.0 * critic_fake).mean()
@@ -535,47 +478,16 @@ class GAN():
                 train_batch = self.map_to_device(train_batch)
                 elems, energy_ndx_inp, energy_ndx_out = train_batch
 
-                if n == n_critic:
-                    for key, value in c_loss_dict.items():
-                        self.out.add_scalar(key, value, global_step=self.step)
-                    g_loss_dict = self.train_step_gen(elems, energy_ndx_inp, energy_ndx_out)
-                    for key, value in g_loss_dict.items():
-                        self.out.add_scalar(key, value, global_step=self.step)
-                    #print(c_loss_dict)
-                    tqdm_train_iterator.set_description('D: {:.2f}, G: {:.2f}, E_out: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_inp: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}, R: {:.2f}'.format(c_loss_dict['Critic/wasserstein'],
-                                                                                   g_loss_dict['Generator/wasserstein'],
-                                                                                   g_loss_dict['Generator/e_bond_out'],
-                                                                                   g_loss_dict['Generator/e_angle_out'],
-                                                                                   g_loss_dict['Generator/e_dih_out'],
-                                                                                   g_loss_dict['Generator/e_lj_out'],
-                                                                                   g_loss_dict['Generator/e_bond_inp'],
-                                                                                   g_loss_dict['Generator/e_angle_inp'],
-                                                                                   g_loss_dict['Generator/e_dih_inp'],
-                                                                                   g_loss_dict['Generator/e_lj_inp'],
-                                                                                   g_loss_dict['Generator/overlap'],
-                                                                                   g_loss_dict['Generator/rec']))
+                inp_coords, out_coords = elems
 
-                    #for value, l in zip([c_loss] + list(g_loss_dict.values()), loss_epoch):
-                    #    l.append(value)
+                recon_coords = self.reconstruction_loss(out_coords, inp_coords)
 
-                    if self.loader_val:
-                        try:
-                            val_batch = next(val_iterator)
-                        except StopIteration:
-                            val_iterator = iter(self.loader_val)
-                            val_batch = next(val_iterator)
-                        val_batch = self.map_to_device(val_batch)
-                        elems, energy_ndx_inp, energy_ndx_out = val_batch
-                        g_loss_dict = self.train_step_gen(elems, energy_ndx_inp, energy_ndx_out, backprop=False)
-                        for key, value in g_loss_dict.items():
-                            self.out.add_scalar(key, value, global_step=self.step, mode='val')
-                    self.step += 1
-                    n = 0
-
-                else:
-                    c_loss_dict = self.train_step_critic(elems)
-                    #print("l", c_loss)
-                    n += 1
+                print(inp_coords.size())
+                print(out_coords.size())
+                print(recon_coords.size())
+                print(inp_coords)
+                print(out_coords)
+                print(recon_coords)
 
             #tqdm.write(g_loss_dict)
             """
@@ -618,7 +530,7 @@ class GAN():
         val_bs = self.cfg.getint('validate', 'batchsize')
 
 
-        g = Mol_Generator_AA(self.data, train=False, rand_rot=False)
+        g = Mol_Generator_inp(self.data, train=False, rand_rot=False)
         all_elems = list(g)
 
 
@@ -847,20 +759,6 @@ class GAN():
             elif self.prior_mode == 'min':
                 g_loss += self.energy_weight() * (e_bond_out + e_angle_out + e_dih_out + e_lj_out)
 
-        if self.recon:
-            out_coords = avg_blob(
-                fake_mol,
-                res=self.cfg.getint('grid', 'resolution'),
-                width=self.cfg.getfloat('grid', 'length'),
-                sigma=self.cfg.getfloat('grid', 'sigma_out'),
-                device=self.device,
-            )
-            rec_loss = self.reconstruction_loss(out_coords, inp_coords_intra)
-            g_loss += self.recon_weight * rec_loss
-        else:
-            rec_loss = torch.zeros([], dtype=torch.float32, device=self.device)
-
-
 
 
         #g_loss = g_wass + self.prior_weight() * energy_loss
@@ -883,11 +781,7 @@ class GAN():
                        "Generator/e_angle_inp": e_angle_inp.detach().cpu().numpy(),
                        "Generator/e_dih_inp": e_dih_inp.detach().cpu().numpy(),
                        "Generator/e_lj_inp": e_lj_inp.detach().cpu().numpy(),
-                       "Generator/overlap": g_overlap.detach().cpu().numpy(),
-                       "Generator/rec": rec_loss.detach().cpu().numpy()}
-
-
-
+                       "Generator/overlap": g_overlap.detach().cpu().numpy()}
 
         return g_loss_dict
 

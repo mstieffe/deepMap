@@ -29,7 +29,7 @@ class Universe():
         start = timer()
 
         self.name = path_dict['file_name']
-        print(self.name)
+        print("processing ", self.name, "...")
         #forcefield
         self.ff = ff
 
@@ -57,7 +57,7 @@ class Universe():
         self.subbox_dict_mols = self.box.empty_subbox_dict()
 
         atype_name_dict, m = {}, 0
-        for line in read_between("[atoms]", "[/atoms]", path_dict['top_aa']):
+        for line in read_between("[atoms]", "[/atoms]", path_dict['top_inp']):
             if len(line.split()) >= 2:
                 atom_type = line.split()[1]
                 atype_name_dict[m] = atom_type
@@ -90,7 +90,7 @@ class Universe():
 
 
 
-            self.mols[-1].add_aa_top(path_dict['top_aa'])
+            self.mols[-1].add_aa_top(path_dict['top_inp'])
             if coms:
                 self.mols[-1].com = coms[len(self.mols)-1]
             else:
@@ -98,7 +98,7 @@ class Universe():
             self.subbox_dict_mols[self.box.subbox(self.mols[-1].com)].append(self.mols[-1])
 
             beads = []
-            for line in read_between("[atoms]", "[/atoms]", path_dict['top_cg']):
+            for line in read_between("[atoms]", "[/atoms]", path_dict['top_out']):
                 if len(line.split()) >= 2:
                     #bead_type = line.split()[1][:1]
                     bead_type = line.split()[1]
@@ -107,7 +107,7 @@ class Universe():
                                       pos=self.mols[-1].com))
                 self.mols[-1].add_bead(beads[-1])
             self.beads += beads
-            self.mols[-1].add_cg_top(path_dict['top_cg'])
+            self.mols[-1].add_cg_top(path_dict['top_out'])
 
         for mol in self.mols:
             #intermolecular_atoms = self.intermolecular_atoms(mol)
