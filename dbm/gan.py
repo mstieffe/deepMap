@@ -236,7 +236,7 @@ class GAN():
         self.recon = cfg.getboolean('model', 'recon')
         if self.recon and self.ff_out.n_atoms < self.ff_inp.n_atoms:
             raise Exception("reconstruction error only applicable when going from lower to higher resolution")
-        else:
+        elif self.recon:
             self.mapping = {}
             self.recon_weight = cfg.getfloat('prior', 'rec')
             map_file = self.data.dir_mapping / self.cfg.get('model', 'map_file')
