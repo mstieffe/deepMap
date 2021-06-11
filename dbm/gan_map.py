@@ -666,7 +666,7 @@ class GAN():
 
             for sample in self.data.samples_val_inp:
                 #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
-                sample.write_inp_gro_file(samples_dir / (sample.name + ".gro"))
+                sample.write_aa_gro_file(samples_dir / (sample.name + ".gro"))
                 for a in sample.atoms:
                     a.pos = pos_dict[a]
                     #pos_dict[a] = a.pos
