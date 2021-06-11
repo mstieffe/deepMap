@@ -8,7 +8,7 @@ from dbm.torch_energy import *
 from dbm.output import *
 from dbm.recurrent_generator import Recurrent_Generator
 from dbm.mol_generator import Mol_Generator
-from dbm.mol_generator_AA import Mol_Generator_AA
+from dbm.mol_generator_inp import Mol_Generator_AA
 from tqdm import tqdm
 import numpy as np
 #from tqdm import tqdm
@@ -49,8 +49,8 @@ class DS(Dataset):
 
         self.resolution = cfg.getint('grid', 'resolution')
         self.delta_s = cfg.getfloat('grid', 'length') / cfg.getint('grid', 'resolution')
-        self.sigma_aa = cfg.getfloat('grid', 'sigma_aa')
-        self.sigma_cg = cfg.getfloat('grid', 'sigma_cg')
+        self.sigma_inp = cfg.getfloat('grid', 'sigma_inp')
+        self.sigma_out = cfg.getfloat('grid', 'sigma_out')
 
         if cfg.getboolean('training', 'rand_rot'):
             self.rand_rot = True
@@ -59,7 +59,7 @@ class DS(Dataset):
             self.rand_rot = False
         self.align = int(cfg.getboolean('universe', 'align'))
 
-        self.cg_env = cfg.getboolean('model', 'cg_env')
+        self.out_env = cfg.getboolean('model', 'out_env')
 
         self.grid = make_grid_np(self.delta_s, self.resolution)
 
@@ -76,34 +76,34 @@ class DS(Dataset):
         d = self.elems[ndx]
 
 
-        aa_coords_intra = np.dot(d['aa_positions_intra'], R.T)
-        aa_blobbs_intra = voxelize_gauss(aa_coords_intra, self.sigma_aa, self.grid)
-        aa_features_intra = d['aa_intra_featvec'][:, :, None, None, None] * aa_blobbs_intra[:, None, :, :, :]
+        inp_coords_intra = np.dot(d['inp_positions_intra'], R.T)
+        inp_blobbs_intra = voxelize_gauss(inp_coords_intra, self.sigma_inp, self.grid)
+        inp_features_intra = d['inp_intra_featvec'][:, :, None, None, None] * inp_blobbs_intra[:, None, :, :, :]
 
-        gen_input = np.sum(aa_features_intra, 0)
-        #aa_features_intra = aa_blobbs_intra
+        gen_input = np.sum(inp_features_intra, 0)
+        #inp_features_intra = inp_blobbs_intra
 
-        cg_positions_intra = voxelize_gauss(np.dot(d['cg_positions_intra'], R.T), self.sigma_cg, self.grid)
-        target = cg_positions_intra
+        out_positions_intra = voxelize_gauss(np.dot(d['out_positions_intra'], R.T), self.sigma_out, self.grid)
+        target = out_positions_intra
 
-        aa_coords = aa_coords_intra
-        cg_coords_inter = np.zeros((1,3))
-        #if d['aa_positions_inter']:
+        inp_coords = inp_coords_intra
+        out_coords_inter = np.zeros((1,3))
+        #if d['inp_positions_inter']:
 
-        aa_coords_inter = np.dot(d['aa_positions_inter'], R.T)
-        aa_blobbs_inter = voxelize_gauss(aa_coords_inter, self.sigma_aa, self.grid)
-        aa_features_inter = d['aa_inter_featvec'][:, :, None, None, None] * aa_blobbs_inter[:, None, :, :, :]
-        aa_features_inter = np.sum(aa_features_inter, 0)
-        gen_input = np.concatenate((gen_input, aa_features_inter), 0)
+        inp_coords_inter = np.dot(d['inp_positions_inter'], R.T)
+        inp_blobbs_inter = voxelize_gauss(inp_coords_inter, self.sigma_inp, self.grid)
+        inp_features_inter = d['inp_inter_featvec'][:, :, None, None, None] * inp_blobbs_inter[:, None, :, :, :]
+        inp_features_inter = np.sum(inp_features_inter, 0)
+        gen_input = np.concatenate((gen_input, inp_features_inter), 0)
 
-        aa_coords = np.concatenate((aa_coords_intra, aa_coords_inter), 0)
+        inp_coords = np.concatenate((inp_coords_intra, inp_coords_inter), 0)
 
 
-        cg_coords_inter = np.dot(d['cg_positions_inter'], R.T)
-        cg_blobbs_inter = voxelize_gauss(cg_coords_inter, self.sigma_cg, self.grid)
-        cg_features_inter = d['cg_inter_featvec'][:, :, None, None, None] * cg_blobbs_inter[:, None, :, :, :]
-        cg_features_inter = np.sum(cg_features_inter, 0)
-        crit_input_real = np.concatenate((target, cg_features_inter), 0)
+        out_coords_inter = np.dot(d['out_positions_inter'], R.T)
+        out_blobbs_inter = voxelize_gauss(out_coords_inter, self.sigma_out, self.grid)
+        out_features_inter = d['out_inter_featvec'][:, :, None, None, None] * out_blobbs_inter[:, None, :, :, :]
+        out_features_inter = np.sum(out_features_inter, 0)
+        crit_input_real = np.concatenate((target, out_features_inter), 0)
 
 
 
@@ -111,16 +111,16 @@ class DS(Dataset):
         #print(target.shape)
         #print(features.shape)
 
-        energy_ndx_aa = (d['aa_bond_ndx'], d['aa_ang_ndx'], d['aa_dih_ndx'], d['aa_lj_intra_ndx'], d['aa_lj_ndx'])
-        energy_ndx_cg = (d['cg_bond_ndx'], d['cg_ang_ndx'], d['cg_dih_ndx'], d['cg_lj_intra_ndx'],  d['cg_lj_ndx'])
+        energy_ndx_inp = (d['inp_bond_ndx'], d['inp_ang_ndx'], d['inp_dih_ndx'], d['inp_lj_intra_ndx'], d['inp_lj_ndx'])
+        energy_ndx_out = (d['out_bond_ndx'], d['out_ang_ndx'], d['out_dih_ndx'], d['out_lj_intra_ndx'],  d['out_lj_ndx'])
 
         """
-        #print([a.type.name for a in d['aa_mol'].atoms])
+        #print([a.type.name for a in d['inp_mol'].atoms])
         fig = plt.figure(figsize=(20, 20))
         n_chns = 4
         colours = ['red', 'black', 'green', 'blue']
         ax = fig.add_subplot(1, 1, 1, projection='3d')
-        # ax.scatter(mol_aa.com[0], mol_aa.com[1],mol_aa.com[2], s=20, marker='o', color='blue', alpha=0.5)
+        # ax.scatter(mol_inp.com[0], mol_inp.com[1],mol_inp.com[2], s=20, marker='o', color='blue', alpha=0.5)
 
         for i in range(0, self.resolution):
             for j in range(0, self.resolution):
@@ -131,15 +131,15 @@ class DS(Dataset):
                             ax.scatter(i,j,k, s=2, marker='o', color='black', alpha=min(features[n,i,j,k], 1.0))
         #carb_ndx = [1,4,7,10,13,16,19,22]
         carb_ndx = [0,1,2,3]
-        print(aa_coords_intra)
-        for z in range(0, len(aa_coords_intra)):
+        print(inp_coords_intra)
+        for z in range(0, len(inp_coords_intra)):
             if z in carb_ndx:
-                ax.scatter(aa_coords_intra[z, 0]/self.delta_s + self.resolution/2-0.5, aa_coords_intra[z, 1]/self.delta_s+ self.resolution/2-0.5, aa_coords_intra[z, 2]/self.delta_s+ self.resolution/2-0.5, s=8, marker='o', color='red')
+                ax.scatter(inp_coords_intra[z, 0]/self.delta_s + self.resolution/2-0.5, inp_coords_intra[z, 1]/self.delta_s+ self.resolution/2-0.5, inp_coords_intra[z, 2]/self.delta_s+ self.resolution/2-0.5, s=8, marker='o', color='red')
             #else:
-            #    ax.scatter(aa_coords_intra[z, 0]/self.delta_s + self.resolution/2, aa_coords_intra[z, 1]/self.delta_s+ self.resolution/2, aa_coords_intra[z, 2]/self.delta_s+ self.resolution/2, s=4, marker='o', color='blue')
+            #    ax.scatter(inp_coords_intra[z, 0]/self.delta_s + self.resolution/2, inp_coords_intra[z, 1]/self.delta_s+ self.resolution/2, inp_coords_intra[z, 2]/self.delta_s+ self.resolution/2, s=4, marker='o', color='blue')
         """
         """
-        f = d['aa_positions_intra']
+        f = d['inp_positions_intra']
         carb_ndx = [1,4,7,10,13,16,19,22]
         for z in range(0, len(f)):
             if z in carb_ndx:
@@ -164,12 +164,12 @@ class DS(Dataset):
 
         #print("features", features.dtype)
         #print("target", target.dtype)
-        #print("aa_coords_intra", aa_coords_intra.dtype)
-        #print("aa_coords", aa_coords.dtype)
+        #print("inp_coords_intra", inp_coords_intra.dtype)
+        #print("inp_coords", inp_coords.dtype)
 
-        elems = (gen_input, crit_input_real, aa_features_inter, aa_coords_intra, aa_coords, cg_coords_inter)
+        elems = (gen_input, crit_input_real, inp_features_inter, inp_coords_intra, inp_coords, inp_coords_inter, out_coords_inter)
 
-        return elems, energy_ndx_aa, energy_ndx_cg
+        return elems, energy_ndx_inp, energy_ndx_out
 
 
 class GAN():
@@ -197,8 +197,8 @@ class GAN():
             self.loader_train = []
         self.steps_per_epoch = int(len(self.loader_train) / (self.cfg.getint('training', 'n_critic') + 1))
         print(len(self.loader_train), self.steps_per_epoch)
-        self.ff_aa = self.data.ff_aa
-        self.ff_cg = self.data.ff_cg
+        self.ff_inp = self.data.ff_inp
+        self.ff_out = self.data.ff_out
 
         if len(ds_train) != 0:
             ds_val = DS(self.data, cfg, train=False)
@@ -220,25 +220,25 @@ class GAN():
         self.cond = cfg.getboolean('model', 'cond')
         if self.cond and not self.data.pairs:
             raise Exception('conditional GAN can only be used with pairs of snapshots for both resolutions.')
-        self.cg_env = cfg.getboolean('model', 'cg_env')
+        self.out_env = cfg.getboolean('model', 'out_env')
         self.n_env_mols = cfg.getint('universe', 'n_env_mols')
 
-        self.feature_dim = self.ff_aa.n_atom_chns
-        self.feature_dim += self.ff_aa.n_atom_chns
+        self.feature_dim = self.ff_inp.n_atom_chns
+        self.feature_dim += self.ff_inp.n_atom_chns
         """
         if self.n_env_mols != 0:
-            self.feature_dim += self.ff_aa.n_atom_chns
-            if self.cg_env:
-                self.feature_dim += self.ff_cg.n_atom_chns
+            self.feature_dim += self.ff_inp.n_atom_chns
+            if self.out_env:
+                self.feature_dim += self.ff_out.n_atom_chns
         """
-        self.target_dim = self.ff_cg.n_atoms
-        self.critic_dim = self.ff_aa.n_atom_chns + self.target_dim
+        self.target_dim = self.ff_out.n_atoms
+        self.critic_dim = self.ff_inp.n_atom_chns + self.target_dim
         #if self.cond:
         #self.critic_dim += self.feature_dim
 
         self.z_dim = int(cfg.getint('model', 'noise_dim'))
 
-        #print(self.ff_aa.n_atom_chns, self.n_input, self.n_out, self.ff_cg.n_atoms)
+        #print(self.ff_inp.n_atom_chns, self.n_input, self.n_out, self.ff_out.n_atoms)
 
         self.step = 0
         self.epoch = 0
@@ -249,8 +249,8 @@ class GAN():
             self.cfg.getint('training', 'n_checkpoints'),
             self.cfg.get('model', 'output_dir'),
         )
-        self.energy_aa = Energy_torch(self.ff_aa, self.device)
-        self.energy_cg = Energy_torch(self.ff_cg, self.device)
+        self.energy_inp = Energy_torch(self.ff_inp, self.device)
+        self.energy_out = Energy_torch(self.ff_out, self.device)
 
         self.ol_weight = cfg.getfloat('prior', 'ol')
 
@@ -371,13 +371,13 @@ class GAN():
     def generator_loss(self, critic_fake):
         return (-1.0 * critic_fake).mean()
 
-    def overlap_loss(self, aa_mol, cg_mol):
-        aa_mol = torch.flatten(torch.sum(aa_mol, 1), 1)
-        aa_mol = aa_mol / torch.sum(aa_mol, 1, keepdim=True)
-        cg_mol = torch.flatten(torch.sum(cg_mol, 1), 1)
-        cg_mol = cg_mol / torch.sum(cg_mol, 1, keepdim=True)
+    def overlap_loss(self, inp_mol, out_mol):
+        inp_mol = torch.flatten(torch.sum(inp_mol, 1), 1)
+        inp_mol = inp_mol / torch.sum(inp_mol, 1, keepdim=True)
+        out_mol = torch.flatten(torch.sum(out_mol, 1), 1)
+        out_mol = out_mol / torch.sum(out_mol, 1, keepdim=True)
 
-        overlap_loss = (aa_mol * (aa_mol / cg_mol).log()).sum(1)
+        overlap_loss = (inp_mol * (inp_mol / out_mol).log()).sum(1)
         return torch.mean(overlap_loss)
 
     def critic_loss(self, critic_real, critic_fake):
@@ -422,55 +422,55 @@ class GAN():
         # Return gradient penalty
         return gradients_norm.mean()
 
-    def get_energies_aa(self, aa_coords_intra, aa_coords, energy_ndx):
+    def get_energies_inp(self, inp_coords_intra, inp_coords, energy_ndx):
 
         bond_ndx, angle_ndx, dih_ndx, lj_intra_ndx, lj_ndx = energy_ndx
         if bond_ndx.size()[1]:
-            b_energy = self.energy_aa.bond(aa_coords_intra, bond_ndx)
+            b_energy = self.energy_inp.bond(inp_coords_intra, bond_ndx)
         else:
             b_energy = torch.zeros([], dtype=torch.float32, device=self.device)
         if angle_ndx.size()[1]:
-            a_energy = self.energy_aa.angle(aa_coords_intra, angle_ndx)
+            a_energy = self.energy_inp.angle(inp_coords_intra, angle_ndx)
         else:
             a_energy = torch.zeros([], dtype=torch.float32, device=self.device)
         if dih_ndx.size()[1]:
-            d_energy = self.energy_aa.dih(aa_coords_intra, dih_ndx)
+            d_energy = self.energy_inp.dih(inp_coords_intra, dih_ndx)
         else:
             d_energy = torch.zeros([], dtype=torch.float32, device=self.device)
         if lj_ndx.size()[1]:
-            l_energy = self.energy_aa.lj(aa_coords, lj_ndx)
+            l_energy = self.energy_inp.lj(inp_coords, lj_ndx)
         else:
             l_energy = torch.zeros([], dtype=torch.float32, device=self.device)
         #print(l_energy)
         return torch.mean(b_energy), torch.mean(a_energy), torch.mean(d_energy), torch.mean(l_energy)
 
-    def get_energies_cg(self, atom_grid, coords_inter, energy_ndx):
+    def get_energies_out(self, atom_grid, coords_inter, energy_ndx):
         coords = avg_blob(
             atom_grid,
             res=self.cfg.getint('grid', 'resolution'),
             width=self.cfg.getfloat('grid', 'length'),
-            sigma=self.cfg.getfloat('grid', 'sigma_cg'),
+            sigma=self.cfg.getfloat('grid', 'sigma_out'),
             device=self.device,
         )
 
         bond_ndx, angle_ndx, dih_ndx, lj_intra_ndx, lj_ndx = energy_ndx
         if bond_ndx.size()[1]:
-            b_energy = self.energy_cg.bond(coords, bond_ndx)
+            b_energy = self.energy_out.bond(coords, bond_ndx)
         else:
             b_energy = torch.zeros([], dtype=torch.float32, device=self.device)
         if angle_ndx.size()[1]:
-            a_energy = self.energy_cg.angle(coords, angle_ndx)
+            a_energy = self.energy_out.angle(coords, angle_ndx)
         else:
             a_energy = torch.zeros([], dtype=torch.float32, device=self.device)
         if dih_ndx.size()[1]:
-            d_energy = self.energy_cg.dih(coords, dih_ndx)
+            d_energy = self.energy_out.dih(coords, dih_ndx)
         else:
             d_energy = torch.zeros([], dtype=torch.float32, device=self.device)
-        if self.cg_env and self.n_env_mols:
+        if self.out_env and self.n_env_mols:
             coords = torch.cat((coords, coords_inter), 1)
-            l_energy = self.energy_cg.lj(coords, lj_ndx)
+            l_energy = self.energy_out.lj(coords, lj_ndx)
         elif lj_intra_ndx.size()[1]:
-            l_energy = self.energy_cg.lj(coords, lj_intra_ndx)
+            l_energy = self.energy_out.lj(coords, lj_intra_ndx)
         else:
             l_energy = torch.zeros([], dtype=torch.float32, device=self.device)
         return torch.mean(b_energy), torch.mean(a_energy), torch.mean(d_energy), torch.mean(l_energy)
@@ -494,25 +494,25 @@ class GAN():
             for train_batch in tqdm_train_iterator:
 
                 train_batch = self.map_to_device(train_batch)
-                elems, energy_ndx_aa, energy_ndx_cg = train_batch
+                elems, energy_ndx_inp, energy_ndx_out = train_batch
 
                 if n == n_critic:
                     for key, value in c_loss_dict.items():
                         self.out.add_scalar(key, value, global_step=self.step)
-                    g_loss_dict = self.train_step_gen(elems, energy_ndx_aa, energy_ndx_cg)
+                    g_loss_dict = self.train_step_gen(elems, energy_ndx_inp, energy_ndx_out)
                     for key, value in g_loss_dict.items():
                         self.out.add_scalar(key, value, global_step=self.step)
                     #print(c_loss_dict)
-                    tqdm_train_iterator.set_description('D: {:.2f}, G: {:.2f}, E_cg: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_aa: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}'.format(c_loss_dict['Critic/wasserstein'],
+                    tqdm_train_iterator.set_description('D: {:.2f}, G: {:.2f}, E_out: {:.2f}, {:.2f}, {:.2f}, {:.2f}, E_inp: {:.2f}, {:.2f}, {:.2f}, {:.2f}, OL: {:.2f}'.format(c_loss_dict['Critic/wasserstein'],
                                                                                    g_loss_dict['Generator/wasserstein'],
-                                                                                   g_loss_dict['Generator/e_bond_cg'],
-                                                                                   g_loss_dict['Generator/e_angle_cg'],
-                                                                                   g_loss_dict['Generator/e_dih_cg'],
-                                                                                   g_loss_dict['Generator/e_lj_cg'],
-                                                                                   g_loss_dict['Generator/e_bond_aa'],
-                                                                                   g_loss_dict['Generator/e_angle_aa'],
-                                                                                   g_loss_dict['Generator/e_dih_aa'],
-                                                                                   g_loss_dict['Generator/e_lj_aa'],
+                                                                                   g_loss_dict['Generator/e_bond_out'],
+                                                                                   g_loss_dict['Generator/e_angle_out'],
+                                                                                   g_loss_dict['Generator/e_dih_out'],
+                                                                                   g_loss_dict['Generator/e_lj_out'],
+                                                                                   g_loss_dict['Generator/e_bond_inp'],
+                                                                                   g_loss_dict['Generator/e_angle_inp'],
+                                                                                   g_loss_dict['Generator/e_dih_inp'],
+                                                                                   g_loss_dict['Generator/e_lj_inp'],
                                                                                    g_loss_dict['Generator/overlap']))
 
                     #for value, l in zip([c_loss] + list(g_loss_dict.values()), loss_epoch):
@@ -525,8 +525,8 @@ class GAN():
                             val_iterator = iter(self.loader_val)
                             val_batch = next(val_iterator)
                         val_batch = self.map_to_device(val_batch)
-                        elems, energy_ndx_aa, energy_ndx_cg = val_batch
-                        g_loss_dict = self.train_step_gen(elems, energy_ndx_aa, energy_ndx_cg, backprop=False)
+                        elems, energy_ndx_inp, energy_ndx_out = val_batch
+                        g_loss_dict = self.train_step_gen(elems, energy_ndx_inp, energy_ndx_out, backprop=False)
                         for key, value in g_loss_dict.items():
                             self.out.add_scalar(key, value, global_step=self.step, mode='val')
                     self.step += 1
@@ -539,7 +539,7 @@ class GAN():
 
             #tqdm.write(g_loss_dict)
             """
-            tqdm.write('epoch {} steps {} : D: {} G: {}, E_cg: {}, {}, {}, {}, E_aa: {}, {}, {}, {}, OL: {}'.format(
+            tqdm.write('epoch {} steps {} : D: {} G: {}, E_out: {}, {}, {}, {}, E_inp: {}, {}, {}, {}, OL: {}'.format(
                 self.epoch,
                 self.step,
                 sum(loss_epoch[0]) / len(loss_epoch[0]),
@@ -570,16 +570,16 @@ class GAN():
         resolution = self.cfg.getint('grid', 'resolution')
         grid_length = self.cfg.getfloat('grid', 'length')
         delta_s = self.cfg.getfloat('grid', 'length') / self.cfg.getint('grid', 'resolution')
-        sigma_aa = self.cfg.getfloat('grid', 'sigma_aa')
-        sigma_cg = self.cfg.getfloat('grid', 'sigma_cg')
+        sigma_inp = self.cfg.getfloat('grid', 'sigma_inp')
+        sigma_out = self.cfg.getfloat('grid', 'sigma_out')
         grid = torch.from_numpy(make_grid_np(delta_s, resolution)).to(self.device)
 
-        cg_env = self.cfg.getboolean('model', 'cg_env')
+        out_env = self.cfg.getboolean('model', 'out_env')
         val_bs = self.cfg.getint('validate', 'batchsize')
 
-        samples_aa = self.data.samples_val_aa
+        samples_inp = self.data.samples_val_inp
         pos_dict = {}
-        for sample in samples_aa:
+        for sample in samples_inp:
             for a in sample.atoms:
                 pos_dict[a] = a.pos
 
@@ -596,48 +596,48 @@ class GAN():
                     with torch.no_grad():
                         batch = all_elems[ndx:min(ndx + val_bs, len(all_elems))]
 
-                        aa_positions_intra = np.array([d['aa_positions_intra'] for d in batch])
-                        aa_intra_featvec = np.array([d['aa_intra_featvec'] for d in batch])
+                        inp_positions_intra = np.array([d['inp_positions_intra'] for d in batch])
+                        inp_intra_featvec = np.array([d['inp_intra_featvec'] for d in batch])
 
-                        aa_positions_intra = torch.from_numpy(aa_positions_intra).to(self.device).float()
-                        aa_blobbs_intra = self.to_voxel(aa_positions_intra, grid, sigma_aa)
+                        inp_positions_intra = torch.from_numpy(inp_positions_intra).to(self.device).float()
+                        inp_blobbs_intra = self.to_voxel(inp_positions_intra, grid, sigma_inp)
 
-                        features = torch.from_numpy(aa_intra_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_intra[:, :, None, :, :, :]
+                        features = torch.from_numpy(inp_intra_featvec[:, :, :, None, None, None]).to(self.device) * inp_blobbs_intra[:, :, None, :, :, :]
                         features = torch.sum(features, 1)
 
 
-                        aa_positions_inter = np.array([d['aa_positions_inter'] for d in batch])
-                        aa_inter_featvec = np.array([d['aa_inter_featvec'] for d in batch])
+                        inp_positions_inter = np.array([d['inp_positions_inter'] for d in batch])
+                        inp_inter_featvec = np.array([d['inp_inter_featvec'] for d in batch])
 
-                        aa_positions_inter = torch.from_numpy(aa_positions_inter).to(self.device).float()
-                        aa_blobbs_inter = self.to_voxel(aa_positions_inter, grid, sigma_aa)
+                        inp_positions_inter = torch.from_numpy(inp_positions_inter).to(self.device).float()
+                        inp_blobbs_inter = self.to_voxel(inp_positions_inter, grid, sigma_inp)
 
-                        features_aa_inter = torch.from_numpy(aa_inter_featvec[:, :, :, None, None, None]).to(self.device) * aa_blobbs_inter[:, :, None, :, :, :]
-                        features_aa_inter = torch.sum(features_aa_inter, 1)
+                        features_inp_inter = torch.from_numpy(inp_inter_featvec[:, :, :, None, None, None]).to(self.device) * inp_blobbs_inter[:, :, None, :, :, :]
+                        features_inp_inter = torch.sum(features_inp_inter, 1)
 
 
-                        gen_input = torch.cat((features, features_aa_inter), 1)
+                        gen_input = torch.cat((features, features_inp_inter), 1)
 
                         """
-                        cg_positions_inter = np.array([d['cg_positions_inter'] for d in batch])
-                        cg_inter_featvec = np.array([d['cg_inter_featvec'] for d in batch])
+                        out_positions_inter = np.array([d['out_positions_inter'] for d in batch])
+                        out_inter_featvec = np.array([d['out_inter_featvec'] for d in batch])
 
-                        cg_positions_inter = torch.from_numpy(cg_positions_inter).to(self.device).float()
-                        cg_blobbs_inter = self.to_voxel(cg_positions_inter, grid, sigma_aa)
+                        out_positions_inter = torch.from_numpy(out_positions_inter).to(self.device).float()
+                        out_blobbs_inter = self.to_voxel(out_positions_inter, grid, sigma_inp)
 
-                        features_cg_inter = torch.from_numpy(cg_inter_featvec[:, :, :, None, None, None]).to(self.device) * cg_blobbs_inter[:, :, None, :, :, :]
-                        features_cg_inter = torch.sum(features_cg_inter, 1)
+                        features_out_inter = torch.from_numpy(out_inter_featvec[:, :, :, None, None, None]).to(self.device) * out_blobbs_inter[:, :, None, :, :, :]
+                        features_out_inter = torch.sum(features_out_inter, 1)
 
-                        #features = torch.cat((features, features_cg_inter), 1)
+                        #features = torch.cat((features, features_out_inter), 1)
 
-                        gen_input = torch.cat((features, features_cg_inter), 1)
+                        gen_input = torch.cat((features, features_out_inter), 1)
                         """
 
-                        mols = np.array([d['aa_mol'] for d in batch])
+                        mols = np.array([d['inp_mol'] for d in batch])
 
 
-                        #elems, energy_ndx_aa, energy_ndx_cg = val_batch
-                        #features, _, aa_coords_intra, aa_coords = elems
+                        #elems, energy_ndx_inp, energy_ndx_out = val_batch
+                        #features, _, inp_coords_intra, inp_coords = elems
                         if self.z_dim != 0:
                             z = torch.empty(
                                 [features.shape[0], self.z_dim],
@@ -653,7 +653,7 @@ class GAN():
                             fake_mol,
                             res=resolution,
                             width=grid_length,
-                            sigma=sigma_cg,
+                            sigma=sigma_out,
                             device=self.device,)
                         for positions, mol in zip(coords, mols):
                             positions = positions.detach().cpu().numpy()
@@ -664,9 +664,9 @@ class GAN():
             samples_dir = self.out.output_dir / "samples"
             samples_dir.mkdir(exist_ok=True)
 
-            for sample in self.data.samples_val_aa:
+            for sample in self.data.samples_val_inp:
                 #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
-                sample.write_aa_gro_file(samples_dir / (sample.name + ".gro"))
+                sample.write_inp_gro_file(samples_dir / (sample.name + ".gro"))
                 for a in sample.atoms:
                     a.pos = pos_dict[a]
                     #pos_dict[a] = a.pos
@@ -679,7 +679,7 @@ class GAN():
 
     def train_step_critic(self, elems):
 
-        gen_input, crit_input_real, aa_features_inter, _, _, _ = elems
+        gen_input, crit_input_real, inp_features_inter, _, _, _, _ = elems
 
         #features, target, _, _, _ = elems
 
@@ -703,7 +703,7 @@ class GAN():
         n_chns = 4
         colours = ['red', 'black', 'green', 'blue']
         ax = fig.add_subplot(1, 1, 1, projection='3d')
-        # ax.scatter(mol_aa.com[0], mol_aa.com[1],mol_aa.com[2], s=20, marker='o', color='blue', alpha=0.5)
+        # ax.scatter(mol_inp.com[0], mol_inp.com[1],mol_inp.com[2], s=20, marker='o', color='blue', alpha=0.5)
         for i in range(0, 8):
             for j in range(0, 8):
                 for k in range(0, 8):
@@ -736,7 +736,7 @@ class GAN():
         """
 
         real_data = crit_input_real
-        fake_data = torch.cat([fake_mol, aa_features_inter], dim=1)
+        fake_data = torch.cat([fake_mol, inp_features_inter], dim=1)
 
 
 
@@ -768,9 +768,9 @@ class GAN():
         return c_loss_dict
 
 
-    def train_step_gen(self, elems, energy_ndx_aa, energy_ndx_cg, backprop=True):
+    def train_step_gen(self, elems, energy_ndx_inp, energy_ndx_out, backprop=True):
 
-        gen_input, crit_input_real, aa_features_inter, aa_coords_intra, aa_coords, cg_coords_inter = elems
+        gen_input, crit_input_real, inp_features_inter, inp_coords_intra, inp_coords, inp_coords_inter, out_coords_inter = elems
 
         g_loss = torch.zeros([], dtype=torch.float32, device=self.device)
 
@@ -792,7 +792,7 @@ class GAN():
             fake_data = fake_mol
         """
 
-        fake_data = torch.cat([fake_mol, aa_features_inter], dim=1)
+        fake_data = torch.cat([fake_mol, inp_features_inter], dim=1)
 
 
         critic_fake = self.critic(fake_data)
@@ -800,7 +800,7 @@ class GAN():
         #loss
         g_wass = self.generator_loss(critic_fake)
         #print("g_wass", g_wass)
-        g_overlap = self.overlap_loss(gen_input[:, :self.ff_aa.n_atom_chns], fake_mol)
+        g_overlap = self.overlap_loss(gen_input[:, :self.ff_inp.n_atom_chns], fake_mol)
         if self.use_ol:
             g_loss += g_wass + self.ol_weight * g_overlap
         else:
@@ -811,25 +811,25 @@ class GAN():
         #real_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, target_atom[:, None, :, :, :])
         #fake_atom_grid = torch.where(repl[:, :, None, None, None], atom_grid, fake_atom)
 
-        e_bond_cg, e_angle_cg, e_dih_cg, e_lj_cg = self.get_energies_cg(fake_mol, cg_coords_inter, energy_ndx_cg)
-        e_bond_aa, e_angle_aa, e_dih_aa, e_lj_aa = self.get_energies_aa(aa_coords_intra, aa_coords, energy_ndx_aa)
+        e_bond_out, e_angle_out, e_dih_out, e_lj_out = self.get_energies_out(fake_mol, inp_coords_inter, energy_ndx_out)
+        e_bond_inp, e_angle_inp, e_dih_inp, e_lj_inp = self.get_energies_inp(inp_coords_intra, inp_coords, energy_ndx_inp)
 
         if self.use_energy:
             if self.prior_mode == 'match':
 
-                e_bond_cg_target, e_angle_cg_target, e_dih_cg_target, e_lj_cg_target = self.get_energies_cg(crit_input_real[:, :self.ff_cg.n_atoms], cg_coords_inter, energy_ndx_cg)
+                e_bond_out_target, e_angle_out_target, e_dih_out_target, e_lj_out_target = self.get_energies_out(crit_input_real[:, :self.ff_out.n_atoms], out_coords_inter, energy_ndx_out)
 
                 #print("target")
-                #print(e_bond_cg_target, e_angle_cg_target, e_dih_cg_target, e_lj_cg_target)
+                #print(e_bond_out_target, e_angle_out_target, e_dih_out_target, e_lj_out_target)
                 #print("gen")
-                #print(e_bond_cg, e_angle_cg, e_dih_cg, e_lj_cg)
-                b_loss = torch.mean(torch.abs(e_bond_cg_target - e_bond_cg))
-                a_loss = torch.mean(torch.abs(e_angle_cg_target - e_angle_cg))
-                d_loss = torch.mean(torch.abs(e_dih_cg_target - e_dih_cg))
-                l_loss = torch.mean(torch.abs(e_lj_cg_target - e_lj_cg))
+                #print(e_bond_out, e_angle_out, e_dih_out, e_lj_out)
+                b_loss = torch.mean(torch.abs(e_bond_out_target - e_bond_out))
+                a_loss = torch.mean(torch.abs(e_angle_out_target - e_angle_out))
+                d_loss = torch.mean(torch.abs(e_dih_out_target - e_dih_out))
+                l_loss = torch.mean(torch.abs(e_lj_out_target - e_lj_out))
                 g_loss += self.energy_weight() * (b_loss + a_loss + d_loss + l_loss)
             elif self.prior_mode == 'min':
-                g_loss += self.energy_weight() * (e_bond_cg + e_angle_cg + e_dih_cg + e_lj_cg)
+                g_loss += self.energy_weight() * (e_bond_out + e_angle_out + e_dih_out + e_lj_out)
 
 
 
@@ -845,14 +845,14 @@ class GAN():
 
 
         g_loss_dict = {"Generator/wasserstein": g_wass.detach().cpu().numpy(),
-                       "Generator/e_bond_cg": e_bond_cg.detach().cpu().numpy(),
-                       "Generator/e_angle_cg": e_angle_cg.detach().cpu().numpy(),
-                       "Generator/e_dih_cg": e_dih_cg.detach().cpu().numpy(),
-                       "Generator/e_lj_cg": e_lj_cg.detach().cpu().numpy(),
-                       "Generator/e_bond_aa": e_bond_aa.detach().cpu().numpy(),
-                       "Generator/e_angle_aa": e_angle_aa.detach().cpu().numpy(),
-                       "Generator/e_dih_aa": e_dih_aa.detach().cpu().numpy(),
-                       "Generator/e_lj_aa": e_lj_aa.detach().cpu().numpy(),
+                       "Generator/e_bond_out": e_bond_out.detach().cpu().numpy(),
+                       "Generator/e_angle_out": e_angle_out.detach().cpu().numpy(),
+                       "Generator/e_dih_out": e_dih_out.detach().cpu().numpy(),
+                       "Generator/e_lj_out": e_lj_out.detach().cpu().numpy(),
+                       "Generator/e_bond_inp": e_bond_inp.detach().cpu().numpy(),
+                       "Generator/e_angle_inp": e_angle_inp.detach().cpu().numpy(),
+                       "Generator/e_dih_inp": e_dih_inp.detach().cpu().numpy(),
+                       "Generator/e_lj_inp": e_lj_inp.detach().cpu().numpy(),
                        "Generator/overlap": g_overlap.detach().cpu().numpy()}
 
         return g_loss_dict
