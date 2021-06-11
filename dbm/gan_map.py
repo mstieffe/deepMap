@@ -8,7 +8,7 @@ from dbm.torch_energy import *
 from dbm.output import *
 from dbm.recurrent_generator import Recurrent_Generator
 from dbm.mol_generator import Mol_Generator
-from dbm.mol_generator_inp import Mol_Generator_AA
+from dbm.mol_generator_AA import Mol_Generator_AA
 from tqdm import tqdm
 import numpy as np
 #from tqdm import tqdm
