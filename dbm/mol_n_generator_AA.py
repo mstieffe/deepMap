@@ -36,12 +36,12 @@ class Mol_N_Generator_AA():
         for mol_inp in self.mols_inp:
             d = {}
 
-            batch_mol_inp = mol_inp.env_mols[:self.n_mols]
-            env_mol_inp = mol_inp.env_mols[self.n_mols:]
+            batch_mol_inp = [mol_inp] + list(mol_inp.env_mols[:self.n_mols-1])
+            env_mol_inp = list(mol_inp.env_mols[self.n_mols-1:])
 
             positions_intra_inp, atoms_inp = [], []
-            for mol_inp in batch_mol_inp:
-                for a in mol_inp.atoms:
+            for mol in batch_mol_inp:
+                for a in mol.atoms:
                     atoms_inp.append(a)
                     positions_intra_inp.append(mol_inp.box.diff_vec(a.pos - mol_inp.com))
 
@@ -145,19 +145,25 @@ class Mol_N_Generator_AA():
                                   index_intra_dict[d.atoms[2]],
                                   index_intra_dict[d.atoms[3]]]))
 
+        """
         lj_intra_ndx = []
-        for l in mol.ljs_intra:
-            lj_intra_ndx.append(tuple([l.type_index,
-                                 index_intra_dict[l.atoms[0]],
-                                 index_intra_dict[l.atoms[1]]]))
-
+        for mol in mols:
+            for l in mol.ljs_intra:
+                lj_intra_ndx.append(tuple([l.type_index,
+                                     index_intra_dict[l.atoms[0]],
+                                     index_intra_dict[l.atoms[1]]]))
+        """
         lj_ndx = []
-        for l in mol.ljs:
-            lj_ndx.append(tuple([l.type_index,
-                                 index_dict[l.atoms[0]],
-                                 index_dict[l.atoms[1]]]))
+        for mol in mols:
+            for l in mol.ljs:
+                try:
+                    lj_ndx.append(tuple([l.type_index,
+                                         index_dict[l.atoms[0]],
+                                         index_dict[l.atoms[1]]]))
+                except:
+                    continue
 
-        return bond_ndx, angle_ndx, dih_ndx, lj_intra_ndx, lj_ndx
+        return bond_ndx, angle_ndx, dih_ndx, lj_ndx
 
     def all_elems(self):
         g = iter(self)
