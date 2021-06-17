@@ -128,7 +128,7 @@ class Mol_N_Generator():
                 "out_mol": mol_out
             }
 
-
+            """
             fig = plt.figure(figsize=(20,20))
             n_chns = 4
             colours = ['red', 'black', 'green', 'blue']
@@ -152,6 +152,7 @@ class Mol_N_Generator():
                 ax.tick_params(labelsize=6)
                 plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
             plt.show()
+            """
 
 
             yield d
@@ -203,7 +204,9 @@ class Mol_N_Generator():
                                          index_dict[l.atoms[0]],
                                          index_dict[l.atoms[1]]]))
                 except:
-                    continue
+                    lj_ndx.append(tuple([-1,
+                                         1,
+                                         2]))
 
         return bond_ndx, angle_ndx, dih_ndx, lj_ndx
 

@@ -161,8 +161,9 @@ class Mol_N_Generator_AA():
                                          index_dict[l.atoms[0]],
                                          index_dict[l.atoms[1]]]))
                 except:
-                    continue
-
+                    lj_ndx.append(tuple([-1,
+                                         1,
+                                         2]))
         return bond_ndx, angle_ndx, dih_ndx, lj_ndx
 
     def all_elems(self):
