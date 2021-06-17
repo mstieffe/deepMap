@@ -637,7 +637,7 @@ class GAN():
                         gen_input = torch.cat((features, features_out_inter), 1)
                         """
 
-                        batch_mols = np.array([d['inp_mol'] for d in batch])
+                        batch_mols = np.array([d['inp_mols'] for d in batch])
 
 
                         #elems, energy_ndx_inp, energy_ndx_out = val_batch
