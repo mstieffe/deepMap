@@ -661,7 +661,7 @@ class GAN():
                             device=self.device,)
                         for positions, mols in zip(coords, batch_mols):
                             positions = positions.detach().cpu().numpy()
-                            positions = np.dot(positions, mol.rot_mat.T)
+                            positions = np.dot(positions, mols[0].rot_mat.T)
                             atoms = []
                             for mol in mols:
                                 atoms += mol.atoms
