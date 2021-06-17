@@ -223,6 +223,7 @@ class GAN():
             raise Exception('conditional GAN can only be used with pairs of snapshots for both resolutions.')
         self.out_env = cfg.getboolean('model', 'out_env')
         self.n_env_mols = cfg.getint('universe', 'n_env_mols')
+        self.n_mols = cfg.getint('universe', 'n_mols')
 
         self.feature_dim = self.ff_inp.n_atom_chns
         self.feature_dim += self.ff_inp.n_atom_chns
@@ -232,7 +233,7 @@ class GAN():
             if self.out_env:
                 self.feature_dim += self.ff_out.n_atom_chns
         """
-        self.target_dim = self.ff_out.n_atoms
+        self.target_dim = self.ff_out.n_atoms * self.n_mols
         self.critic_dim = self.ff_inp.n_atom_chns + self.target_dim
         #if self.cond:
         #self.critic_dim += self.feature_dim
