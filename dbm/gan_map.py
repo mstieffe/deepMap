@@ -564,7 +564,124 @@ class GAN():
                 self.out.prune_checkpoints()
                 self.val()
 
+
+
     def val(self):
+        start = timer()
+
+        resolution = self.cfg.getint('grid', 'resolution')
+        grid_length = self.cfg.getfloat('grid', 'length')
+        delta_s = self.cfg.getfloat('grid', 'length') / self.cfg.getint('grid', 'resolution')
+        sigma_inp = self.cfg.getfloat('grid', 'sigma_inp')
+        sigma_out = self.cfg.getfloat('grid', 'sigma_out')
+        grid = torch.from_numpy(make_grid_np(delta_s, resolution)).to(self.device)
+
+        out_env = self.cfg.getboolean('model', 'out_env')
+        val_bs = self.cfg.getint('validate', 'batchsize')
+
+        samples_inp = self.data.samples_val_inp
+        pos_dict = {}
+        for sample in samples_inp:
+            for a in sample.atoms:
+                pos_dict[a] = a.pos
+
+        generators = []
+        for n in range(0, self.cfg.getint('validate', 'n_gibbs')):
+            generators.append(iter(Mol_Generator_AA(self.data, train=False, rand_rot=False)))
+        #all_elems = list(g)
+
+
+        try:
+            self.generator.eval()
+            self.critic.eval()
+
+            for g in generators:
+                for d in g:
+                    with torch.no_grad():
+                        #batch = all_elems[ndx:min(ndx + val_bs, len(all_elems))]
+
+                        inp_positions_intra = np.array([d['inp_positions_intra']])
+                        inp_intra_featvec = np.array([d['inp_intra_featvec']])
+
+                        inp_positions_intra = torch.from_numpy(inp_positions_intra).to(self.device).float()
+                        inp_blobbs_intra = self.to_voxel(inp_positions_intra, grid, sigma_inp)
+
+                        features = torch.from_numpy(inp_intra_featvec[:, :, :, None, None, None]).to(self.device) * inp_blobbs_intra[:, :, None, :, :, :]
+                        features = torch.sum(features, 1)
+
+
+                        inp_positions_inter = np.array([d['inp_positions_inter']])
+                        inp_inter_featvec = np.array([d['inp_inter_featvec']])
+
+                        inp_positions_inter = torch.from_numpy(inp_positions_inter).to(self.device).float()
+                        inp_blobbs_inter = self.to_voxel(inp_positions_inter, grid, sigma_inp)
+
+                        features_inp_inter = torch.from_numpy(inp_inter_featvec[:, :, :, None, None, None]).to(self.device) * inp_blobbs_inter[:, :, None, :, :, :]
+                        features_inp_inter = torch.sum(features_inp_inter, 1)
+
+
+                        gen_input = torch.cat((features, features_inp_inter), 1)
+
+                        """
+                        out_positions_inter = np.array([d['out_positions_inter'] for d in batch])
+                        out_inter_featvec = np.array([d['out_inter_featvec'] for d in batch])
+
+                        out_positions_inter = torch.from_numpy(out_positions_inter).to(self.device).float()
+                        out_blobbs_inter = self.to_voxel(out_positions_inter, grid, sigma_inp)
+
+                        features_out_inter = torch.from_numpy(out_inter_featvec[:, :, :, None, None, None]).to(self.device) * out_blobbs_inter[:, :, None, :, :, :]
+                        features_out_inter = torch.sum(features_out_inter, 1)
+
+                        #features = torch.cat((features, features_out_inter), 1)
+
+                        gen_input = torch.cat((features, features_out_inter), 1)
+                        """
+
+                        mols = np.array([d['inp_mol']])
+
+
+                        #elems, energy_ndx_inp, energy_ndx_out = val_batch
+                        #features, _, inp_coords_intra, inp_coords = elems
+                        if self.z_dim != 0:
+                            z = torch.empty(
+                                [features.shape[0], self.z_dim],
+                                dtype=torch.float32,
+                                device=self.device,
+                            ).normal_()
+
+                            fake_mol = self.generator(z, gen_input)
+                        else:
+                            fake_mol = self.generator(gen_input)
+
+                        coords = avg_blob(
+                            fake_mol,
+                            res=resolution,
+                            width=grid_length,
+                            sigma=sigma_out,
+                            device=self.device,)
+                        for positions, mol in zip(coords, mols):
+                            positions = positions.detach().cpu().numpy()
+                            positions = np.dot(positions, mol.rot_mat.T)
+                            for pos, atom in zip(positions, mol.atoms):
+                                atom.pos = pos + mol.com
+
+            samples_dir = self.out.output_dir / "samples"
+            samples_dir.mkdir(exist_ok=True)
+
+            for sample in self.data.samples_val_inp:
+                #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
+                sample.write_aa_gro_file(samples_dir / (sample.name + ".gro"))
+                for a in sample.atoms:
+                    a.pos = pos_dict[a]
+                    #pos_dict[a] = a.pos
+                #sample.kick_beads()
+        finally:
+            self.generator.train()
+            self.critic.train()
+            print("validation took ", timer()-start, "secs")
+
+
+    def val_old(self):
         start = timer()
 
         resolution = self.cfg.getint('grid', 'resolution')
