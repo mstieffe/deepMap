@@ -585,9 +585,9 @@ class GAN():
             for a in sample.atoms:
                 pos_dict[a] = a.pos
 
-        generators = []
-        for n in range(0, self.cfg.getint('validate', 'n_gibbs')):
-            generators.append(iter(Mol_Generator_AA(self.data, train=False, rand_rot=False)))
+        #generators = []
+        #for n in range(0, self.cfg.getint('validate', 'n_gibbs')):
+        #    generators.append(iter(Mol_Generator_AA(self.data, train=False, rand_rot=False)))
         #all_elems = list(g)
 
 
@@ -595,7 +595,8 @@ class GAN():
             self.generator.eval()
             self.critic.eval()
 
-            for g in generators:
+            for n in range(0, self.cfg.getint('validate', 'n_gibbs')):
+                g = iter(Mol_Generator_AA(self.data, train=False, rand_rot=False))
                 for d in g:
                     with torch.no_grad():
                         #batch = all_elems[ndx:min(ndx + val_bs, len(all_elems))]
@@ -665,15 +666,15 @@ class GAN():
                             for pos, atom in zip(positions, mol.atoms):
                                 atom.pos = pos + mol.com
 
-            samples_dir = self.out.output_dir / "samples"
-            samples_dir.mkdir(exist_ok=True)
+                samples_dir = self.out.output_dir / "samples_"+str(n)
+                samples_dir.mkdir(exist_ok=True)
 
-            for sample in self.data.samples_val_inp:
-                #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
-                sample.write_aa_gro_file(samples_dir / (sample.name + ".gro"))
-                for a in sample.atoms:
-                    a.pos = pos_dict[a]
-                    #pos_dict[a] = a.pos
+                for sample in self.data.samples_val_inp:
+                    #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
+                    sample.write_aa_gro_file(samples_dir / (sample.name + ".gro"))
+                    for a in sample.atoms:
+                        a.pos = pos_dict[a]
+                        #pos_dict[a] = a.pos
                 #sample.kick_beads()
         finally:
             self.generator.train()
