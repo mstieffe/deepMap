@@ -513,7 +513,7 @@ class GAN():
 
             b_dstr_loss = 0.5 * ((b_dstr_inp * (b_dstr_inp / b_dstr_avg).log()).sum(0) + (b_dstr_out * (b_dstr_out / b_dstr_avg).log()).sum(0))
 
-            if self.step % 1 == 0:
+            if self.step % 50 == 0:
                 fig = plt.figure()
                 ax = plt.gca()
                 x = [h * 0.4/64 for h in range(0,64)]
@@ -534,7 +534,7 @@ class GAN():
 
             a_dstr_loss = 0.5 * ((a_dstr_inp * (a_dstr_inp / a_dstr_avg).log()).sum(0) + (a_dstr_out * (a_dstr_out / a_dstr_avg).log()).sum(0))
 
-            if self.step % 1 == 0:
+            if self.step % 50 == 0:
                 fig = plt.figure()
                 ax = plt.gca()
                 x = [h * 180.0/64 for h in range(0,64)]
@@ -558,7 +558,7 @@ class GAN():
 
             d_dstr_loss = 0.5 * ((d_dstr_inp * (d_dstr_inp / d_dstr_avg).log()).sum(0) + (d_dstr_out * (d_dstr_out / d_dstr_avg).log()).sum(0))
 
-            if self.step % 1 == 0:
+            if self.step % 50 == 0:
                 fig = plt.figure()
                 ax = plt.gca()
                 x = [h * 180.0/64 for h in range(0,64)]
@@ -585,7 +585,7 @@ class GAN():
 
             nb_dstr_loss = 0.5 * ((nb_dstr_inp * (nb_dstr_inp / nb_dstr_avg).log()).sum(0) + (nb_dstr_out * (nb_dstr_out / nb_dstr_avg).log()).sum(0))
 
-            if self.step % 1 == 0:
+            if self.step % 50 == 0:
                 fig = plt.figure()
                 ax = plt.gca()
                 x = [h * 2.0/64 for h in range(0,64)]
