@@ -522,6 +522,8 @@ class GAN():
                 #ax.plot(x, a_dstr_avg.detach().cpu().numpy()[:,0], label='avg')
                 #ax.text(0.1, 0.1, "JSD: "+str(a_dstr_loss.detach().cpu().numpy()))
                 self.out.add_fig("bond", fig, global_step=self.step)
+                plt.close(fig)
+
 
         else:
             b_dstr_loss = torch.zeros([], dtype=torch.float32, device=self.device)
@@ -541,6 +543,8 @@ class GAN():
                 #ax.plot(x, a_dstr_avg.detach().cpu().numpy()[:,0], label='avg')
                 #ax.text(0.1, 0.1, "JSD: "+str(a_dstr_loss.detach().cpu().numpy()))
                 self.out.add_fig("angle", fig, global_step=self.step)
+                plt.close(fig)
+
 
             #print(a_dstr_loss)
             #print(a_dstr_loss.size())
@@ -563,6 +567,8 @@ class GAN():
                 #ax.plot(x, a_dstr_avg.detach().cpu().numpy()[:,0], label='avg')
                 #ax.text(0.1, 0.1, "JSD: "+str(a_dstr_loss.detach().cpu().numpy()))
                 self.out.add_fig("dih", fig, global_step=self.step)
+                plt.close(fig)
+
             #print(d_dstr_loss)
             #print(d_dstr_loss.size())
         else:
@@ -588,6 +594,7 @@ class GAN():
                 #ax.plot(x, a_dstr_avg.detach().cpu().numpy()[:,0], label='avg')
                 #ax.text(0.1, 0.1, "JSD: "+str(a_dstr_loss.detach().cpu().numpy()))
                 self.out.add_fig("nonbonded", fig, global_step=self.step)
+                plt.close(fig)
 
             #print(b_dstr_loss)
             #print(b_dstr_loss.size())
