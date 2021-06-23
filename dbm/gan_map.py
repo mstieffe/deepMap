@@ -709,8 +709,13 @@ class GAN():
         sigma_out = self.cfg.getfloat('grid', 'sigma_out')
         grid = torch.from_numpy(make_grid_np(delta_s, resolution)).to(self.device)
 
+
+
         out_env = self.cfg.getboolean('model', 'out_env')
         val_bs = self.cfg.getint('validate', 'batchsize')
+
+        rot_mtxs = torch.from_numpy(rot_mtx_batch(val_bs)).to(self.device).float()
+        rot_mtxs_transposed = torch.from_numpy(rot_mtx_batch(val_bs, transpose=True)).to(self.device).float()
 
         samples_inp = self.data.samples_val_inp
         pos_dict = {}
@@ -735,9 +740,10 @@ class GAN():
                         #batch = all_elems[ndx:min(ndx + val_bs, len(all_elems))]
 
                         inp_positions_intra = np.array([d['inp_positions_intra']])
+
                         inp_intra_featvec = np.array([d['inp_intra_featvec']])
 
-                        inp_positions_intra = torch.from_numpy(inp_positions_intra).to(self.device).float()
+                        inp_positions_intra = torch.matmul(torch.from_numpy(inp_positions_intra).to(self.device).float(), rot_mtxs)
                         inp_blobbs_intra = self.to_voxel(inp_positions_intra, grid, sigma_inp)
 
                         features = torch.from_numpy(inp_intra_featvec[:, :, :, None, None, None]).to(self.device) * inp_blobbs_intra[:, :, None, :, :, :]
@@ -747,7 +753,7 @@ class GAN():
                         inp_positions_inter = np.array([d['inp_positions_inter']])
                         inp_inter_featvec = np.array([d['inp_inter_featvec']])
 
-                        inp_positions_inter = torch.from_numpy(inp_positions_inter).to(self.device).float()
+                        inp_positions_inter = torch.matmul(torch.from_numpy(inp_positions_inter).to(self.device).float(), rot_mtxs)
                         inp_blobbs_inter = self.to_voxel(inp_positions_inter, grid, sigma_inp)
 
                         features_inp_inter = torch.from_numpy(inp_inter_featvec[:, :, :, None, None, None]).to(self.device) * inp_blobbs_inter[:, :, None, :, :, :]
@@ -771,7 +777,7 @@ class GAN():
                         gen_input = torch.cat((features, features_out_inter), 1)
                         """
 
-                        mols = np.array([d['inp_mol']])
+                        mol = d['inp_mol']
 
 
                         #elems, energy_ndx_inp, energy_ndx_out = val_batch
@@ -793,11 +799,14 @@ class GAN():
                             width=grid_length,
                             sigma=sigma_out,
                             device=self.device,)
-                        for positions, mol in zip(coords, mols):
-                            positions = positions.detach().cpu().numpy()
-                            positions = np.dot(positions, mol.rot_mat.T)
-                            for pos, atom in zip(positions, mol.atoms):
-                                atom.pos = pos + mol.com
+                        coords = torch.matmul(coords, rot_mtxs_transposed)
+                        coords = torch.sum(coords, 0) / val_bs
+
+                        #for positions, mol in zip(coords, mols):
+                        positions = coords.detach().cpu().numpy()
+                        positions = np.dot(positions, mol.rot_mat.T)
+                        for pos, atom in zip(positions, mol.atoms):
+                            atom.pos = pos + mol.com
 
                 samples_dir = self.out.output_dir / "samples"
                 samples_dir.mkdir(exist_ok=True)
