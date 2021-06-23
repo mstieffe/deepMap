@@ -252,6 +252,16 @@ class GAN():
         self.energy_inp = Energy_torch(self.ff_inp, self.device)
         self.energy_out = Energy_torch(self.ff_out, self.device)
 
+        self.gauss_hist_bond_inp = GaussianHistogram_Dis(bins=64, min=0.0, max=0.8, sigma=0.005, ff=self.ff_inp, device=device)
+        self.gauss_hist_angle_inp = GaussianHistogram_Angle(bins=64, min=0, max=180, sigma=2.0, ff=self.ff_inp, device=device)
+        self.gauss_hist_dih_inp = GaussianHistogram_Dih(bins=64, min=0, max=180, sigma=4.0, ff=self.ff_inp, device=device)
+        self.gauss_hist_nb_inp = GaussianHistogram_Dis(bins=64, min=0.0, max=2.0, sigma=0.02, ff=self.ff_inp, device=device)
+
+        self.gauss_hist_bond_out = GaussianHistogram_Dis(bins=64, min=0.0, max=0.8, sigma=0.005, ff=self.ff_out, device=device)
+        self.gauss_hist_angle_out = GaussianHistogram_Angle(bins=64, min=0, max=180, sigma=2.0, ff=self.ff_out, device=device)
+        self.gauss_hist_dih_out = GaussianHistogram_Dih(bins=64, min=0, max=180, sigma=4.0, ff=self.ff_out, device=device)
+        self.gauss_hist_nb_out = GaussianHistogram_Dis(bins=64, min=0.0, max=2.0, sigma=0.02, ff=self.ff_out, device=device)
+
         self.ol_weight = cfg.getfloat('prior', 'ol')
 
         prior_weights = self.cfg.get('prior', 'weights')
@@ -474,6 +484,122 @@ class GAN():
         else:
             l_energy = torch.zeros([], dtype=torch.float32, device=self.device)
         return torch.mean(b_energy), torch.mean(a_energy), torch.mean(d_energy), torch.mean(l_energy)
+
+
+    def dstr_loss(self, out_mol, inp_mol, out_inter_coords, inp_inter_coords, energy_ndx_out, energy_ndx_inp):
+        out_mol_coords = avg_blob(
+            out_mol,
+            res=self.cfg.getint('grid', 'resolution'),
+            width=self.cfg.getfloat('grid', 'length'),
+            sigma=self.cfg.getfloat('grid', 'sigma_out'),
+            device=self.device,
+        )
+        inp_mol_coords = avg_blob(
+            inp_mol,
+            res=self.cfg.getint('grid', 'resolution'),
+            width=self.cfg.getfloat('grid', 'length'),
+            sigma=self.cfg.getfloat('grid', 'sigma_inp'),
+            device=self.device,
+        )
+        bond_ndx_out, angle_ndx_out, dih_ndx_out, _, lj_ndx_out = energy_ndx_out
+        bond_ndx_inp, angle_ndx_inp, dih_ndx_inp, _, lj_ndx_inp = energy_ndx_inp
+
+        if bond_ndx_out.size()[1] and bond_ndx_inp.size()[1]:
+            #b_dstr_real = self.gauss_hist_bond(self.energy.bond_dstr(real_coords, bond_ndx))
+            #b_dstr_fake = self.gauss_hist_bond(self.energy.bond_dstr(fake_coords, bond_ndx))
+            b_dstr_inp = self.gauss_hist_bond_inp(inp_mol_coords, bond_ndx_inp)
+            b_dstr_out = self.gauss_hist_bond_inp(out_mol_coords, bond_ndx_out)
+            b_dstr_avg = 0.5 * (b_dstr_inp + b_dstr_out)
+
+            b_dstr_loss = 0.5 * ((b_dstr_inp * (b_dstr_inp / b_dstr_avg).log()).sum(0) + (b_dstr_out * (b_dstr_out / b_dstr_avg).log()).sum(0))
+
+            if self.step % 1 == 0:
+                fig = plt.figure()
+                ax = plt.gca()
+                x = [h * 0.4/64 for h in range(0,64)]
+                ax.plot(x, b_dstr_inp.detach().cpu().numpy()[:,0], label='inp')
+                ax.plot(x, b_dstr_out.detach().cpu().numpy()[:,0], label='out')
+                #ax.plot(x, a_dstr_avg.detach().cpu().numpy()[:,0], label='avg')
+                #ax.text(0.1, 0.1, "JSD: "+str(a_dstr_loss.detach().cpu().numpy()))
+                self.out.add_fig("bond", fig, global_step=self.step)
+
+        else:
+            b_dstr_loss = torch.zeros([], dtype=torch.float32, device=self.device)
+        if angle_ndx_out.size()[1] and angle_ndx_inp.size()[1]:
+            a_dstr_inp = self.gauss_hist_angle_inp(inp_mol_coords, angle_ndx_inp)
+            a_dstr_out = self.gauss_hist_angle_inp(out_mol_coords, angle_ndx_out)
+            a_dstr_avg = 0.5 * (a_dstr_inp + a_dstr_out)
+
+            a_dstr_loss = 0.5 * ((a_dstr_inp * (a_dstr_inp / a_dstr_avg).log()).sum(0) + (a_dstr_out * (a_dstr_out / a_dstr_avg).log()).sum(0))
+
+            if self.step % 1 == 0:
+                fig = plt.figure()
+                ax = plt.gca()
+                x = [h * 180.0/64 for h in range(0,64)]
+                ax.plot(x, a_dstr_inp.detach().cpu().numpy()[:,0], label='inp')
+                ax.plot(x, a_dstr_out.detach().cpu().numpy()[:,0], label='out')
+                #ax.plot(x, a_dstr_avg.detach().cpu().numpy()[:,0], label='avg')
+                #ax.text(0.1, 0.1, "JSD: "+str(a_dstr_loss.detach().cpu().numpy()))
+                self.out.add_fig("angle", fig, global_step=self.step)
+
+            #print(a_dstr_loss)
+            #print(a_dstr_loss.size())
+
+        else:
+            a_dstr_loss = torch.zeros([], dtype=torch.float32, device=self.device)
+        if dih_ndx_out.size()[1] and dih_ndx_inp.size()[1]:
+            d_dstr_inp = self.gauss_hist_bond_inp(inp_mol_coords, dih_ndx_inp)
+            d_dstr_out = self.gauss_hist_bond_inp(out_mol_coords, dih_ndx_out)
+            d_dstr_avg = 0.5 * (d_dstr_inp + d_dstr_out)
+
+            d_dstr_loss = 0.5 * ((d_dstr_inp * (d_dstr_inp / d_dstr_avg).log()).sum(0) + (d_dstr_out * (d_dstr_out / d_dstr_avg).log()).sum(0))
+
+            if self.step % 1 == 0:
+                fig = plt.figure()
+                ax = plt.gca()
+                x = [h * 180.0/64 for h in range(0,64)]
+                ax.plot(x, d_dstr_inp.detach().cpu().numpy()[:,0], label='ref')
+                ax.plot(x, d_dstr_out.detach().cpu().numpy()[:,0], label='fake')
+                #ax.plot(x, a_dstr_avg.detach().cpu().numpy()[:,0], label='avg')
+                #ax.text(0.1, 0.1, "JSD: "+str(a_dstr_loss.detach().cpu().numpy()))
+                self.out.add_fig("dih", fig, global_step=self.step)
+            #print(d_dstr_loss)
+            #print(d_dstr_loss.size())
+        else:
+            d_dstr_loss = torch.zeros([], dtype=torch.float32, device=self.device)
+
+
+        if lj_ndx_out.size()[1] and lj_ndx_inp.size()[1]:
+            coords_inp = torch.cat((inp_mol_coords, inp_inter_coords), 1)
+            coords_out = torch.cat((out_mol_coords, out_inter_coords), 1)
+
+            nb_dstr_inp = self.gauss_hist_nb_inp(coords_inp, lj_ndx_inp)
+            nb_dstr_out = self.gauss_hist_nb_out(coords_out, lj_ndx_out)
+            nb_dstr_avg = 0.5 * (nb_dstr_inp + nb_dstr_out)
+
+            nb_dstr_loss = 0.5 * ((nb_dstr_inp * (nb_dstr_inp / nb_dstr_avg).log()).sum(0) + (nb_dstr_out * (nb_dstr_out / nb_dstr_avg).log()).sum(0))
+
+            if self.step % 1 == 0:
+                fig = plt.figure()
+                ax = plt.gca()
+                x = [h * 2.0/64 for h in range(0,64)]
+                ax.plot(x, nb_dstr_inp.detach().cpu().numpy()[:,0], label='inp')
+                ax.plot(x, nb_dstr_out.detach().cpu().numpy()[:,0], label='out')
+                #ax.plot(x, a_dstr_avg.detach().cpu().numpy()[:,0], label='avg')
+                #ax.text(0.1, 0.1, "JSD: "+str(a_dstr_loss.detach().cpu().numpy()))
+                self.out.add_fig("nonbonded", fig, global_step=self.step)
+
+            #print(b_dstr_loss)
+            #print(b_dstr_loss.size())
+        else:
+            nb_dstr_loss = torch.zeros([], dtype=torch.float32, device=self.device)
+        #print(torch.sum(b_dstr_loss))
+        #print(torch.sum(a_dstr_loss))
+        #print(torch.sum(d_dstr_loss))
+        #print(torch.sum(nb_dstr_loss))
+
+        return torch.sum(b_dstr_loss), torch.sum(a_dstr_loss), torch.sum(d_dstr_loss), torch.sum(nb_dstr_loss)
+
 
     def detach(self, t):
         t = tuple([c.detach().cpu().numpy() for c in t])
@@ -947,6 +1073,9 @@ class GAN():
                 g_loss += self.energy_weight() * (b_loss + a_loss + d_loss + l_loss)
             elif self.prior_mode == 'min':
                 g_loss += self.energy_weight() * (e_bond_out + e_angle_out + e_dih_out + e_lj_out)
+            elif self.prior_mode == "dstr":
+                b_loss, a_loss, d_loss, nb_loss = self.dstr_loss(crit_input_real[:, :self.ff_out.n_atoms], fake_mol, out_coords_inter, inp_coords_inter, energy_ndx_out, energy_ndx_inp)
+                g_loss += self.energy_weight() * (b_loss + a_loss + d_loss + nb_loss)
 
 
 

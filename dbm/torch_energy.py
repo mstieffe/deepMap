@@ -2,6 +2,178 @@ import torch
 from dbm.ff import *
 from scipy import constants
 import sys
+import numpy as np
+import torch.nn as nn
+
+
+class GaussianHistogram_Dis(nn.Module):
+    def __init__(self, bins, min, max, sigma, ff, device):
+        super(GaussianHistogram_Dis, self).__init__()
+        self.device = device
+
+        self.bins = bins
+        self.min = min
+        self.max = max
+        self.sigma = sigma
+        self.delta = float(max - min) / float(bins)
+        self.centers = float(min) + self.delta * (torch.arange(bins).float() + 0.5)
+        self.centers = self.centers[None, None, :].to(device=device)
+
+        self.n_classes = len(ff.bond_params())
+        # self.types_one_hot = types_one_hot[:,:, None, :] #(BS,N_bond, 1, N_types)
+
+    def forward(self, atoms, indices):
+        ndx1 = indices[:, :, 1]  # (BS, n_bonds)
+        ndx2 = indices[:, :, 2]
+        param_ndx = indices[:, :, 0]
+        param_ndx = param_ndx + 1
+        param_one_hot = torch.nn.functional.one_hot(param_ndx, num_classes=self.n_classes)[:, :,
+                        1:]  # (BS, N_bonds, N_classes)
+        param_one_hot = param_one_hot.type(torch.FloatTensor).to(device=self.device)
+
+        pos1 = torch.stack([a[n] for n, a in zip(ndx1, atoms)])
+        pos2 = torch.stack([a[n] for n, a in zip(ndx2, atoms)])
+
+        dis = pos1 - pos2
+        dis = dis ** 2
+        dis = torch.sum(dis, 2)
+        dis = torch.sqrt(dis)
+
+        x = dis[:, :, None] - self.centers
+        x = torch.exp(-0.5 * (x / self.sigma) ** 2) / (self.sigma * np.sqrt(np.pi * 2)) * self.delta
+        # print(x.type())
+        # print(param_one_hot.type())
+        x = x[:, :, :, None] * param_one_hot[:, :, None, :]  # (BS, N_bonds, N_bins, N_types)
+        x = x.sum(dim=(0, 1)) + 1E-20
+        x = x / x.sum(dim=0, keepdim=True)
+        return x
+
+
+class GaussianHistogram_Angle(nn.Module):
+    def __init__(self, bins, min, max, sigma, ff, device):
+        super(GaussianHistogram_Angle, self).__init__()
+        self.device = device
+        self.bins = bins
+        self.min = min
+        self.max = max
+        self.sigma = sigma
+        self.delta = float(max - min) / float(bins)
+        self.centers = float(min) + self.delta * (torch.arange(bins).float() + 0.5)
+        self.centers = self.centers[None, None, :].to(device=device)
+
+        self.n_classes = len(ff.angle_params())
+        # self.types_one_hot = types_one_hot[:,:, None, :] #(BS,N_bond, 1, N_types)
+
+    def forward(self, atoms, indices):
+        ndx1 = indices[:, :, 1]  # (BS, n_angles)
+        ndx2 = indices[:, :, 2]
+        ndx3 = indices[:, :, 3]
+        param_ndx = indices[:, :, 0]
+        param_ndx = param_ndx + 1
+        param_one_hot = torch.nn.functional.one_hot(param_ndx, num_classes=self.n_classes)[:, :,
+                        1:]  # (BS, N_bonds, N_classes)
+        param_one_hot = param_one_hot.type(torch.FloatTensor).to(device=self.device)
+
+        pos1 = torch.stack([a[n] for n, a in zip(ndx1, atoms)])
+        pos2 = torch.stack([a[n] for n, a in zip(ndx2, atoms)])
+        pos3 = torch.stack([a[n] for n, a in zip(ndx3, atoms)])
+
+        vec1 = pos1 - pos2
+        vec2 = pos3 - pos2
+
+        norm1 = vec1 ** 2
+        norm1 = torch.sum(norm1, dim=2)
+        norm1 = torch.sqrt(norm1)
+        norm2 = vec2 ** 2
+        norm2 = torch.sum(norm2, dim=2)
+        norm2 = torch.sqrt(norm2)
+        norm = norm1 * norm2
+
+        dot = vec1 * vec2
+        dot = torch.sum(dot, dim=2)
+
+        # norm = tf.clip_by_value(norm, 10E-8, 1000.0)
+
+        a = dot / norm
+        a = torch.clamp(a, -0.9999, 0.9999)
+        # a = tf.clip_by_value(a, -0.9999, 0.9999)  # prevent nan because of rounding errors
+
+        a = torch.acos(a) * 180.0 / np.pi
+
+        x = a[:, :, None] - self.centers
+        x = torch.exp(-0.5 * (x / self.sigma) ** 2) / (self.sigma * np.sqrt(np.pi * 2)) * self.delta
+        # print(x.type())
+        # print(param_one_hot.type())
+        x = x[:, :, :, None] * param_one_hot[:, :, None, :]  # (BS, N_bonds, N_bins, N_types)
+        x = x.sum(dim=(0, 1)) + 1E-20
+        x = x / x.sum(dim=0, keepdim=True)
+        return x
+
+
+class GaussianHistogram_Dih(nn.Module):
+    def __init__(self, bins, min, max, sigma, ff, device):
+        super(GaussianHistogram_Dih, self).__init__()
+        self.device = device
+
+        self.bins = bins
+        self.min = min
+        self.max = max
+        self.sigma = sigma
+        self.delta = float(max - min) / float(bins)
+        self.centers = float(min) + self.delta * (torch.arange(bins).float() + 0.5)
+        self.centers = self.centers[None, None, :].to(device=device)
+
+        self.n_classes = len(ff.dih_params())
+        # self.types_one_hot = types_one_hot[:,:, None, :] #(BS,N_bond, 1, N_types)
+
+    def forward(self, atoms, indices):
+        ndx1 = indices[:, :, 1]  # (BS, n_dihs)
+        ndx2 = indices[:, :, 2]
+        ndx3 = indices[:, :, 3]
+        ndx4 = indices[:, :, 4]
+        param_ndx = indices[:, :, 0]
+        param_ndx = param_ndx + 1
+        param_one_hot = torch.nn.functional.one_hot(param_ndx, num_classes=self.n_classes)[:, :,
+                        1:]  # (BS, N_bonds, N_classes)
+        param_one_hot = param_one_hot.type(torch.FloatTensor).to(device=self.device)
+
+        pos1 = torch.stack([a[n] for n, a in zip(ndx1, atoms)])
+        pos2 = torch.stack([a[n] for n, a in zip(ndx2, atoms)])
+        pos3 = torch.stack([a[n] for n, a in zip(ndx3, atoms)])
+        pos4 = torch.stack([a[n] for n, a in zip(ndx4, atoms)])
+
+        vec1 = pos2 - pos1
+        vec2 = pos2 - pos3
+        vec3 = pos4 - pos3
+
+        plane1 = torch.cross(vec1, vec2)
+        plane2 = torch.cross(vec2, vec3)
+
+        norm1 = plane1 ** 2
+        norm1 = torch.sum(norm1, dim=2)
+        norm1 = torch.sqrt(norm1)
+
+        norm2 = plane2 ** 2
+        norm2 = torch.sum(norm2, dim=2)
+        norm2 = torch.sqrt(norm2)
+
+        dot = plane1 * plane2
+        dot = torch.sum(dot, dim=2)
+
+        norm = norm1 * norm2  # + 1E-20
+        a = dot / norm
+        a = torch.clamp(a, -0.9999, 0.9999)
+
+        a = torch.acos(a) * 180.0 / np.pi
+
+        x = a[:, :, None] - self.centers
+        x = torch.exp(-0.5 * (x / self.sigma) ** 2) / (self.sigma * np.sqrt(np.pi * 2)) * self.delta
+        # print(x.type())
+        # print(param_one_hot.type())
+        x = x[:, :, :, None] * param_one_hot[:, :, None, :]  # (BS, N_bonds, N_bins, N_types)
+        x = x.sum(dim=(0, 1)) + 1E-20
+        x = x / x.sum(dim=0, keepdim=True)
+        return x
 
 class Energy_torch():
 

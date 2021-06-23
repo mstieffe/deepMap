@@ -69,3 +69,14 @@ class OutputHandler(object):
         else:
             raise ValueError('unknown mode', mode)
         writer.add_scalar(tag, scalar_value, global_step=global_step, walltime=walltime)
+
+    def add_fig(self, tag, fig, global_step=None, walltime=None, mode='train'):
+        if mode == 'train':
+            writer = self.logs_writer
+        elif mode == 'val':
+            writer = self.logs_writer_val
+        elif mode == 'test':
+            writer = self.logs_writer_test
+        else:
+            raise ValueError('unknown mode', mode)
+        writer.add_figure(tag, fig, global_step=global_step, walltime=walltime)
