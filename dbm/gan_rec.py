@@ -851,6 +851,8 @@ class GAN():
         e_bond_out, e_angle_out, e_dih_out, e_lj_out = self.get_energies(fake_atom_grid, energy_ndx)
         e_bond_inp, e_angle_inp, e_dih_inp, e_lj_inp = self.get_energies(real_atom_grid, energy_ndx)
 
+        b_dstr, a_dstr, d_dstr, nb_dstr = self.dstr_loss(real_atom_grid, fake_atom_grid, energy_ndx)
+
         fake_mol = torch.cat(fake_mol, dim=1)
         real_mol = torch.cat(real_mol, dim=1)
 
@@ -868,8 +870,7 @@ class GAN():
             elif self.prior_mode == 'min':
                 g_loss = g_loss + self.energy_weight() * (e_bond_out + e_angle_out + e_dih_out + e_lj_out)
             elif self.prior_mode == "dstr":
-                b_loss, a_loss, d_loss, nb_loss = self.dstr_loss(real_atom_grid, fake_atom_grid, energy_ndx)
-                g_loss = g_loss + self.energy_weight() * (b_loss + a_loss + d_loss + nb_loss)
+                g_loss = g_loss + self.energy_weight() * (b_dstr + a_dstr + d_dstr + nb_dstr)
 
 
 
