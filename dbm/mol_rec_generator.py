@@ -2,116 +2,90 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import random
+import networkx as nx
 
-class Mol_Generator():
+class Mol_Rec_Generator():
 
-    def __init__(self, data, train=False, rand_rot=False, out_env_ref=True):
+    def __init__(self, data, train=False, rand_rot=False):
 
         self.data = data
         self.train = train
         self.rand_rot = rand_rot
-        self.out_env_ref = out_env_ref
 
         if train:
-            self.samples_inp = self.data.samples_train_inp
-            self.samples_out = self.data.samples_train_out
+            self.samples = self.data.samples_train_out
+            self.ff = self.data.ff_out
         else:
-            self.samples_inp = self.data.samples_val_inp
-            self.samples_out = self.data.samples_val_out
-        self.mols_inp, self.mols_out = [], []
-        for s in self.samples_inp:
-            self.mols_inp += s.mols
-        for s in self.samples_out:
-            self.mols_out += s.mols
+            self.samples = self.data.samples_val_inp
+            self.ff = self.data.ff_inp
+
+        self.mols = []
+        for s in self.samples:
+            self.mols += s.mols
+
         #for mols in [s.mols for s in self.samples_inp]:
         #    self.mols_inp += mols
         #for mols in [s.mols for s in self.samples_out]:
         #    self.mols_out += mols
 
-        if not self.data.pairs:
-            random.shuffle(self.mols_inp)
-            random.shuffle(self.mols_out)
+        #if self.train:
+        random.shuffle(self.mols)
 
 
     def __iter__(self):
 
         #go through every mol
-        for mol_inp, mol_out in zip(self.mols_inp, self.mols_out):
+        for mol in self.mols:
             d = {}
 
-            positions_intra_inp, positions_intra_out = [], []
-            for a in mol_inp.atoms:
-                positions_intra_inp.append(mol_inp.box.diff_vec(a.pos - mol_inp.com))
-                #positions_intra_inp.append(a.pos)
-            for a in mol_out.atoms:
-                positions_intra_out.append(mol_out.box.diff_vec(a.pos - mol_out.com))
+            positions_intra = []
+            for a in mol.atoms:
+                positions_intra.append(mol.box.diff_vec(a.pos - mol.com))
 
-            positions_inter_inp, positions_inter_out = [], []
-            for a in mol_inp.intermolecular_atoms:
-                positions_inter_inp.append(mol_inp.box.diff_vec(a.pos - mol_inp.com))
-            for a in mol_out.intermolecular_atoms:
-                positions_inter_out.append(mol_out.box.diff_vec(a.pos - mol_out.com))
-            """
-            if self.out_env_ref:
-                for a in mol_out.intermolecular_atoms:
-                    positions_inter_out.append(mol_out.box.diff_vec(a.pos - mol_out.com))
-            else:
-                for a in mol_inp.intermolecular_beads:
-                    positions_inter_out.append(mol_inp.box.diff_vec(a.pos - mol_inp.com))
-            """
+            positions_inter = []
+            for a in mol.intermolecular_atoms:
+                positions_inter.append(mol.box.diff_vec(a.pos - mol.com))
+
+
             #align
-            if self.data.pairs:
-                out_rot_mat = mol_inp.rot_mat
-            else:
-                out_rot_mat = mol_out.rot_mat
-            positions_intra_inp = np.dot(positions_intra_inp, mol_inp.rot_mat)
-            positions_intra_out = np.dot(positions_intra_out, out_rot_mat)
+            positions_intra = np.dot(positions_intra, mol.rot_mat)
             if self.data.n_env_mols:
-                positions_inter_inp = np.dot(positions_inter_inp, mol_inp.rot_mat)
-                positions_inter_out = np.dot(positions_inter_out, out_rot_mat)
+                positions_inter = np.dot(positions_inter, mol.rot_mat)
 
+            positions = np.concatenate((positions_intra, positions_inter))
 
-
-            atoms = list(mol_inp.atoms) + list(mol_inp.intermolecular_atoms)
-            beads = list(mol_out.atoms) + list(mol_out.intermolecular_atoms)
+            atoms = list(mol.atoms) + list(mol.intermolecular_atoms)
 
             #energy ndx
-            inp_intra_index_dict = dict(zip(mol_inp.atoms, range(0, len(mol_inp.atoms))))
-            out_intra_index_dict = dict(zip(mol_out.atoms, range(0, len(mol_out.atoms))))
-            inp_index_dict = dict(zip(atoms, range(0, len(atoms))))
-            out_index_dict = dict(zip(beads, range(0, len(beads))))
+            intra_index_dict = dict(zip(mol.atoms, range(0, len(mol.atoms))))
+            index_dict = dict(zip(atoms, range(0, len(atoms))))
 
-            inp_bond_ndx, inp_ang_ndx, inp_dih_ndx, inp_lj_intra_ndx,  inp_lj_ndx = self.energy_ndx(mol_inp, inp_intra_index_dict, inp_index_dict)
-            out_bond_ndx, out_ang_ndx, out_dih_ndx, out_lj_intra_ndx, out_lj_ndx = self.energy_ndx(mol_out, out_intra_index_dict, out_index_dict)
 
-            #features (atom types)
-            inp_intra_featvec = self.featvec(mol_inp.atoms, self.data.ff_inp)
-            inp_inter_featvec = self.featvec(mol_inp.intermolecular_atoms, self.data.ff_inp)
+            bond_ndx, ang_ndx, dih_ndx, lj_intra_ndx,  lj_ndx = self.energy_ndx(mol, intra_index_dict, index_dict)
 
-            out_intra_featvec = self.featvec(mol_out.atoms, self.data.ff_out)
-            out_inter_featvec = self.featvec(mol_out.intermolecular_atoms, self.data.ff_out)
+            atom_seq = list(nx.dfs_preorder_nodes(mol.G, mol.atoms[0]))
+            featvecs, repls, targets = [], [], []
+            for n in range(0, len(atom_seq)):
+                atom = atom_seq[n]
+                predecessors = atom_seq[:n]
+                featvecs.append(self.rec_featvec(atom, atoms, mol, self.ff, index_dict, predecessors))
+
+                repl = np.ones(len(atoms), dtype=bool)
+                repl[index_dict[atom]] = False
+                repls.append(repl)
+
+                targets.append(positions[index_dict[atom]])
 
             d={
-                "inp_positions_intra": np.array(positions_intra_inp, dtype=np.float32),
-                "out_positions_intra": np.array(positions_intra_out, dtype=np.float32),
-                "inp_positions_inter": np.array(positions_inter_inp, dtype=np.float32),
-                "out_positions_inter": np.array(positions_inter_out, dtype=np.float32),
-                "inp_intra_featvec": np.array(inp_intra_featvec, dtype=np.float32),
-                "inp_inter_featvec": np.array(inp_inter_featvec, dtype=np.float32),
-                "out_intra_featvec": np.array(out_intra_featvec, dtype=np.float32),
-                "out_inter_featvec": np.array(out_inter_featvec, dtype=np.float32),
-                "inp_bond_ndx": np.array(inp_bond_ndx, dtype=np.int64),
-                "inp_ang_ndx": np.array(inp_ang_ndx, dtype=np.int64),
-                "inp_dih_ndx": np.array(inp_dih_ndx, dtype=np.int64),
-                "inp_lj_ndx": np.array(inp_lj_ndx, dtype=np.int64),
-                "inp_lj_intra_ndx": np.array(inp_lj_intra_ndx, dtype=np.int64),
-                "out_bond_ndx": np.array(out_bond_ndx, dtype=np.int64),
-                "out_ang_ndx": np.array(out_ang_ndx, dtype=np.int64),
-                "out_dih_ndx": np.array(out_dih_ndx, dtype=np.int64),
-                "out_lj_ndx": np.array(out_lj_ndx, dtype=np.int64),
-                "out_lj_intra_ndx": np.array(out_lj_intra_ndx, dtype=np.int64),
-                "inp_mol": mol_inp,
-                "out_mol": mol_out
+                "targets": np.array(targets, dtype=np.float32),
+                "positions": np.array(positions, dtype=np.float32),
+                "featvec": np.array(featvecs, dtype=np.float32),
+                "bond_ndx": np.array(bond_ndx, dtype=np.int64),
+                "angle_ndx": np.array(ang_ndx, dtype=np.int64),
+                "dih_ndx": np.array(dih_ndx, dtype=np.int64),
+                "lj_ndx": np.array(lj_ndx, dtype=np.int64),
+                "mol": mol,
+                "repl": np.array(repls, dtype=np.bool),
             }
 
             """
@@ -142,38 +116,41 @@ class Mol_Generator():
 
             yield d
 
-    def featvec(self, key='all', inter=True):
-        atom_featvec = np.zeros((len(self.loc_env.atoms), self.top.ff.n_channels))
-        for index in range(0, len(self.loc_env.atoms)):
-            if self.loc_env.atoms[index].type.channel >= 0:
-                atom_featvec[index, self.loc_env.atoms[index].type.channel] = 1
-        for bond in self.top.bonds[key]:
-            if bond.type.channel >= 0:
-                indices = self.loc_env.get_indices(bond.atoms)
-                atom_featvec[indices, bond.type.channel] = 1
-        for angle in self.top.angles[key]:
-            if angle.type.channel >= 0:
-                indices = self.loc_env.get_indices(angle.atoms)
-                atom_featvec[indices, angle.type.channel] = 1
-        for dih in self.top.dihs[key]:
-            #print(dih.type.name)
-            if dih.type.channel >= 0:
-                indices = self.loc_env.get_indices(dih.atoms)
-                atom_featvec[indices, dih.type.channel] = 1
-        if not inter:
-            key = 'intra_' + key
-        for lj in self.top.ljs[key]:
+    def rec_featvec(self, atom, atoms, mol, ff, index_dict, predecessors):
+        atom_featvec = np.zeros((len(atoms), ff.n_channels))
+        for index in range(0, len(atoms)):
+            if atoms[index].type.channel >= 0:
+                atom_featvec[index, atoms[index].type.channel] = 1
+        for bond in mol.bonds:
+            bond_atoms = [a for a in bond.atoms if a in predecessors]
+            if bond.type.channel >= 0 and len(bond_atoms) == 1:
+                for a in bond_atoms:
+                    atom_featvec[index_dict[a], bond.type.channel] = 1
+        for angle in mol.angles:
+            angle_atoms = [a for a in angle.atoms if a in predecessors]
+            if angle.type.channel >= 0 and len(angle_atoms) == 1:
+                for a in angle_atoms:
+                    atom_featvec[index_dict[a], angle.type.channel] = 1
+        for dih in mol.dihs:
+            dih_atoms = [a for a in dih.atoms if a in predecessors]
+            if dih.type.channel >= 0 and len(dih_atoms) == 1:
+                for a in dih_atoms:
+                    atom_featvec[index_dict[a], dih.type.channel] = 1
+        for lj in mol.ljs:
+            lj_atoms = lj.atoms
             if lj.type.channel >= 0:
-                indices = self.loc_env.get_indices(lj.atoms)
-                atom_featvec[indices, lj.type.channel] = 1
-        atom_featvec[self.loc_env.atoms_index_dict[self.top.atom], :] = 0
+                for a in lj_atoms:
+                    atom_featvec[index_dict[a], lj.type.channel] = 1
+        atom_featvec[index_dict[atom], :] = 0
         return atom_featvec
+
 
     def featvec(self, atoms, ff):
         featvec = np.zeros((len(atoms), ff.n_atom_chns))
         for index in range(0, len(atoms)):
             featvec[index, atoms[index].type.channel] = 1
         return featvec
+
 
     def energy_ndx(self, mol, index_intra_dict, index_dict):
         bond_ndx = []
