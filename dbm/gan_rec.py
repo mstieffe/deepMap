@@ -866,11 +866,11 @@ class GAN():
                 a_loss = torch.mean(torch.abs(e_angle_inp - e_angle_out))
                 d_loss = torch.mean(torch.abs(e_dih_inp - e_dih_out))
                 l_loss = torch.mean(torch.abs(e_lj_inp - e_lj_out))
-                g_loss = g_loss + self.energy_weight() * (b_loss + a_loss + d_loss + l_loss)
+                g_loss = g_loss + self.energy_weight() * ((b_loss + a_loss + d_loss)* self.ratio_bonded_nonbonded + l_loss)
             elif self.prior_mode == 'min':
-                g_loss = g_loss + self.energy_weight() * (e_bond_out + e_angle_out + e_dih_out + e_lj_out)
+                g_loss = g_loss + self.energy_weight() * ((e_bond_out + e_angle_out + e_dih_out)*self.ratio_bonded_nonbonded + e_lj_out)
             elif self.prior_mode == "dstr":
-                g_loss = g_loss + self.energy_weight() * (b_dstr + a_dstr + d_dstr + nb_dstr)
+                g_loss = g_loss + self.energy_weight() * ((b_dstr + a_dstr + d_dstr)*self.ratio_bonded_nonbonded + nb_dstr)
 
 
 
