@@ -1,6 +1,6 @@
 from configparser import ConfigParser
 import argparse
-from dbm.gan_rec import *
+from dbm.gan_rec2 import *
 #from dbm.gan_seq import *
 
 def main():
