@@ -493,6 +493,93 @@ class C_tiny_mbd(nn.Module):
         return out
 
 
+class C_tiny_mbd_dstr(nn.Module):
+    def __init__(
+        self, in_channels, start_channels, dstr_chns=64, fac=1, sn: int = 0, device=None
+    ):
+        super().__init__()
+        specnorm = _sn_to_specnorm(sn)
+        self.step1 = specnorm(
+            nn.Conv3d(
+                in_channels=in_channels,
+                out_channels=_facify(start_channels, fac),
+                kernel_size=5,
+                stride=1,
+                padding=compute_same_padding(5, 1, 1),
+            )
+        )
+        self.step2 = nn.LeakyReLU()
+
+        self.step3 = specnorm(
+            nn.Conv3d(
+                in_channels=_facify(start_channels, fac),
+                out_channels=_facify(start_channels*2, fac),
+                kernel_size=3,
+                stride=2,
+                padding=compute_same_padding(3, 1, 1),
+            )
+        )
+        self.step4 = nn.GroupNorm(1, _facify(start_channels*2, fac))
+        self.step5 = nn.LeakyReLU()
+
+        self.step6 = specnorm(
+            nn.Conv3d(
+                in_channels=_facify(start_channels*2, fac),
+                out_channels=_facify(start_channels*2, fac),
+                kernel_size=3,
+                stride=1,
+                padding=compute_same_padding(3, 1, 1),
+            )
+        )
+        self.step7 = nn.GroupNorm(1, _facify(start_channels*2, fac))
+        self.step8 = nn.LeakyReLU()
+
+        self.step9 = specnorm(
+            nn.Conv3d(
+                in_channels=_facify(start_channels*2, fac),
+                out_channels=_facify(start_channels, fac),
+                kernel_size=4,
+                stride=1,
+                padding=0,
+            )
+        )
+        self.step10 = nn.GroupNorm(1, _facify(start_channels, fac))
+        self.step11 = nn.LeakyReLU()
+
+        self.mbd = MinibatchDiscrimination(_facify(start_channels, fac), _facify(start_channels/2, fac), 50)
+
+        dense_blocks = [
+            specnorm(
+            nn.Linear(in_features=_facify(start_channels, fac) + _facify(start_channels / 2, fac) + dstr_chns, out_features=_facify(start_channels, fac))),
+            nn.LeakyReLU()]
+        self.dense = nn.Sequential(*tuple(dense_blocks)).to(device=device)
+
+        self.to_critic_value = specnorm(
+            nn.Linear(
+                in_features=_facify(start_channels, fac), out_features=1
+            )
+        )
+
+    def forward(self, inputs, dstr):
+        out = self.step1(inputs)
+        out = self.step2(out)
+        out = self.step3(out)
+        out = self.step4(out)
+        out = self.step5(out)
+        out = self.step6(out)
+        out = self.step7(out)
+        out = self.step8(out)
+        out = self.step9(out)
+        out = self.step10(out)
+        out = self.step11(out)
+        out = torch.flatten(out, start_dim=1, end_dim=-1)
+        out = self.mbd(out)
+        out = torch.cat((out, dstr), dim=1)
+        out = self.dense(out)
+        out = self.to_critic_value(out)
+        return out
+
+
 class C_tiny16(nn.Module):
     def __init__(
         self, in_channels, start_channels, fac=1, sn: int = 0, device=None
