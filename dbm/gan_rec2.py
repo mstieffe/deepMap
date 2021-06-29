@@ -781,11 +781,6 @@ class GAN():
 
         for target_atom, featvec_real, repl_real, featvec_fake, repl_fake in elems:
             #prepare input for generator
-            z = torch.empty(
-                [target_atom.shape[0], self.z_dim],
-                dtype=torch.float32,
-                device=self.device,
-            ).normal_()
 
             features_real = torch.sum(real_atom_grid[:, :, None, :, :, :] * featvec_real[:, :, :, None, None, None], 1)
             features_fake = torch.sum(fake_atom_grid[:, :, None, :, :, :] * featvec_fake[:, :, :, None, None, None], 1)
@@ -887,7 +882,7 @@ class GAN():
         b_dstr_real, a_dstr_real, d_dstr_real, nb_dstr_real = self.dstr(real_atom_grid, energy_ndx_out)
         b_dstr_fake, a_dstr_fake, d_dstr_fake, nb_dstr_fake = self.dstr(fake_atom_grid, energy_ndx_inp)
 
-        if self.step % 1 == 0:
+        if self.step % 50 == 0:
             fig = plt.figure()
             ax = plt.gca()
             x = [h * 0.4 / self.n_bins for h in range(0, self.n_bins)]
@@ -949,11 +944,6 @@ class GAN():
 
                 g_loss = g_loss + self.energy_weight() * ((b_dstr_loss.sum() + a_dstr_loss.sum() + d_dstr_loss.sum())*self.ratio_bonded_nonbonded + nb_dstr_loss.sum())
             elif self.prior_mode == 'dstr_abs':
-                print(b_dstr_fake)
-                print(a_dstr_fake)
-                print(d_dstr_fake)
-                print(nb_dstr_fake)
-
                 b_loss = torch.mean(torch.abs(b_dstr_real - b_dstr_fake))
                 a_loss = torch.mean(torch.abs(a_dstr_real - a_dstr_fake))
                 d_loss = torch.mean(torch.abs(d_dstr_real - d_dstr_fake))

@@ -51,12 +51,14 @@ class Mol_Rec_Generator():
             positions_inter = []
             for a in mol.intermolecular_atoms:
                 positions_inter.append(mol.box.diff_vec(a.pos - mol.com))
-
+            positions_inter.append([0.0,0.0,0.0])
 
             #align
             positions_intra = np.dot(positions_intra, mol.rot_mat)
             if self.data.n_env_mols:
                 positions_inter = np.dot(positions_inter, mol.rot_mat)
+
+            #print(positions_inter[-1])
 
             positions = np.concatenate((positions_intra, positions_inter))
 
@@ -76,7 +78,7 @@ class Mol_Rec_Generator():
                 predecessors = atom_seq[:n]
                 featvecs.append(self.rec_featvec(atom, atoms, mol, self.ff, index_dict, predecessors))
 
-                repl = np.ones(len(atoms), dtype=bool)
+                repl = np.ones(len(atoms)+1, dtype=bool)
                 repl[index_dict[atom]] = False
                 repls.append(repl)
 
@@ -95,35 +97,47 @@ class Mol_Rec_Generator():
             }
 
             """
-            fig = plt.figure(figsize=(20,20))
-            n_chns = 4
+            n_chns = self.ff.n_channels
             colours = ['red', 'black', 'green', 'blue']
 
-            coords = [np.array(positions_intra_inp), np.array(positions_inter_inp), np.array(positions_intra_out), np.array(positions_inter_out)]
-            features = [list(inp_intra_featvec), list(inp_inter_featvec), list(out_intra_featvec), list(out_inter_featvec)]
-            for c in range(0, n_chns):
+            #coords = [np.array(positions_intra_inp), np.array(positions_inter_inp), np.array(positions_intra_out), np.array(positions_inter_out)]
+            #features = [list(inp_intra_featvec), list(inp_inter_featvec), list(out_intra_featvec), list(out_inter_featvec)]
+            coords = np.array(positions)
+            #print(coords.shape)
+            featvecs = np.array(featvecs)
+            #print(featvecs.shape)
 
-                ax = fig.add_subplot(int(np.ceil(np.sqrt(n_chns))),int(np.ceil(np.sqrt(n_chns))), c+1, projection='3d')
-                pos = coords[c]
-                #ax.scatter(mol_inp.com[0], mol_inp.com[1],mol_inp.com[2], s=20, marker='o', color='blue', alpha=0.5)
-                for n in range(0, len(pos)):
-                    colour_ndx = features[c][n].tolist().index(1.0)
-                    ax.scatter(pos[n,0], pos[n,1], pos[n,2], s=5, marker='o', color=colours[colour_ndx], alpha = 0.5)
-                ax.set_xlim3d(-1.0, 1.0)
-                ax.set_ylim3d(-1.0, 1.0)
-                ax.set_zlim3d(-1.0, 1.0)
-                ax.set_xticks(np.arange(-1, 1, step=0.5))
-                ax.set_yticks(np.arange(-1, 1, step=0.5))
-                ax.set_zticks(np.arange(-1, 1, step=0.5))
-                ax.tick_params(labelsize=6)
-                plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
-            plt.show()
+            for featvec in featvecs:
+                fig = plt.figure(figsize=(20, 20))
+                print(featvec)
+                print(coords[-1])
+                for chn in range(0, n_chns):
+                    ax = fig.add_subplot(int(np.ceil(np.sqrt(n_chns))), int(np.ceil(np.sqrt(n_chns))), chn + 1,projection='3d')
+                    for c, line in zip(coords, featvec):
+                        #pos = coords[c]
+                        #ax.scatter(mol_inp.com[0], mol_inp.com[1],mol_inp.com[2], s=20, marker='o', color='blue', alpha=0.5)
+                        #for n in range(0, len(pos)):
+                        #    colour_ndx = features[c][n].tolist().index(1.0)
+                        if line[chn] == 1:
+                            ax.scatter(c[0], c[1], c[2], s=5, marker='o', color='black', alpha=0.5)
+                        ax.set_xlim3d(-1.0, 1.0)
+                        ax.set_ylim3d(-1.0, 1.0)
+                        ax.set_zlim3d(-1.0, 1.0)
+                        ax.set_xticks(np.arange(-1, 1, step=0.5))
+                        ax.set_yticks(np.arange(-1, 1, step=0.5))
+                        ax.set_zticks(np.arange(-1, 1, step=0.5))
+                        ax.tick_params(labelsize=6)
+                        plt.plot([0.0, 0.0], [0.0, 0.0], [-1.0, 1.0])
+                plt.show()
+                #plt.clf()
+                print("clear")
             """
+
 
             yield d
 
     def rec_featvec(self, atom, atoms, mol, ff, index_dict, predecessors):
-        atom_featvec = np.zeros((len(atoms), ff.n_channels))
+        atom_featvec = np.zeros((len(atoms)+1, ff.n_channels))
         for index in range(0, len(atoms)):
             if atoms[index].type.channel >= 0:
                 atom_featvec[index, atoms[index].type.channel] = 1
@@ -134,20 +148,22 @@ class Mol_Rec_Generator():
                     atom_featvec[index_dict[a], bond.type.channel] = 1
         for angle in mol.angles:
             angle_atoms = [a for a in angle.atoms if a in predecessors]
-            if angle.type.channel >= 0 and len(angle_atoms) == 1:
+            if angle.type.channel >= 0 and len(angle_atoms) == 2:
                 for a in angle_atoms:
                     atom_featvec[index_dict[a], angle.type.channel] = 1
         for dih in mol.dihs:
             dih_atoms = [a for a in dih.atoms if a in predecessors]
-            if dih.type.channel >= 0 and len(dih_atoms) == 1:
+            if dih.type.channel >= 0 and len(dih_atoms) == 3:
                 for a in dih_atoms:
                     atom_featvec[index_dict[a], dih.type.channel] = 1
         for lj in mol.ljs:
-            lj_atoms = lj.atoms
+            #lj_atoms = lj.atoms
+            lj_atoms = [a for a in lj.atoms if a not in mol.atoms]
             if lj.type.channel >= 0:
                 for a in lj_atoms:
                     atom_featvec[index_dict[a], lj.type.channel] = 1
         atom_featvec[index_dict[atom], :] = 0
+        atom_featvec[-1, -1] = 1
         return atom_featvec
 
 
