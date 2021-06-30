@@ -757,12 +757,13 @@ class GAN():
                 samples_dir.mkdir(exist_ok=True)
 
                 for sample in self.data.samples_val_inp:
-                    #sample.write_gro_file(samples_dir / (sample.name + str(self.step) + ".gro"))
                     sample.write_aa_gro_file(samples_dir / (sample.name + "_" +str(n) + ".gro"))
-                    for a in sample.atoms:
-                        a.pos = pos_dict[a]
-                        #pos_dict[a] = a.pos
-                #sample.kick_beads()
+
+            #reset atom positions
+            for sample in self.data.samples_val_inp:
+                for a in sample.atoms:
+                    a.pos = pos_dict[a]
+
         finally:
             self.generator.train()
             self.critic.train()
