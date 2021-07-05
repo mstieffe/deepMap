@@ -1,9 +1,7 @@
 from configparser import ConfigParser
-from dbm.gan import *
-from dbm.gan_seq import *
 import argparse
-
-
+#from dbm.kld_test import *
+from dbm.gan_rec2 import *
 
 def main():
 
@@ -23,17 +21,18 @@ def main():
     args = parser.parse_args()
 
     config_file = args.config
+
     cfg = ConfigParser(inline_comment_prefixes="#")
     cfg.read(config_file)
 
     #set up model
-    if cfg.getboolean('training', 'recurrent'):
-        model = GAN_seq(device=device, cfg=cfg)
-    else:
-        model = GAN(device=device, cfg=cfg)
+    model = GAN(device=device, cfg=cfg)
+
+    #with open('./' + name + '/config.ini', 'a') as f:
+    #    cfg.write(f)
 
     #train
-    model.validate(samples_dir="val")
+    model.val(dir='val')
 
 
 if __name__ == "__main__":

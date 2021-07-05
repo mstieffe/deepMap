@@ -493,6 +493,95 @@ class C_tiny_mbd(nn.Module):
         return out
 
 
+class G_dense(nn.Module):
+    def __init__(
+        self,
+        n_input,
+        n_output,
+        start_channels,
+        fac=1,
+        sn: int = 0,
+        device=None,
+    ):
+        super().__init__()
+        specnorm = _sn_to_specnorm(sn)
+
+        dense_block1 = [
+            specnorm(
+                nn.Linear(in_features=n_input, out_features=start_channels)),
+            nn.LeakyReLU()]
+        self.dense1 = nn.Sequential(*tuple(dense_block1)).to(device=device)
+
+        dense_block2 = [
+            specnorm(
+                nn.Linear(in_features=start_channels, out_features=int(start_channels * 2))),
+            nn.LeakyReLU()]
+        self.dense2 = nn.Sequential(*tuple(dense_block2)).to(device=device)
+
+        dense_block3 = [
+            specnorm(
+                nn.Linear(in_features=int(start_channels * 2), out_features=int(start_channels * 2))),
+            nn.LeakyReLU()]
+        self.dense3 = nn.Sequential(*tuple(dense_block3)).to(device=device)
+
+        self.mbd = MinibatchDiscrimination(int(start_channels * 2), int(start_channels), 20)
+
+        self.to_critic_value = specnorm(
+            nn.Linear(
+                in_features=int(start_channels * 2 + start_channels), out_features=n_output
+            )
+        )
+
+    def forward(self, inputs):
+        out = self.dense1(inputs)
+        out = self.dense2(out)
+        out = self.dense3(out)
+        out = self.mbd(out)
+        out = self.to_critic_value(out)
+        return out
+
+class C_dense(nn.Module):
+    def __init__(
+        self, in_channels, start_channels, fac=1, sn: int = 0, device=None
+    ):
+        super().__init__()
+        specnorm = _sn_to_specnorm(sn)
+
+        dense_block1 = [
+            specnorm(
+            nn.Linear(in_features=in_channels, out_features=start_channels)),
+            nn.LeakyReLU()]
+        self.dense1 = nn.Sequential(*tuple(dense_block1)).to(device=device)
+
+        dense_block2 = [
+            specnorm(
+            nn.Linear(in_features=start_channels, out_features=int(start_channels/2))),
+            nn.LeakyReLU()]
+        self.dense2 = nn.Sequential(*tuple(dense_block2)).to(device=device)
+
+        dense_block3 = [
+            specnorm(
+            nn.Linear(in_features=int(start_channels/2), out_features=int(start_channels/2))),
+            nn.LeakyReLU()]
+        self.dense3 = nn.Sequential(*tuple(dense_block3)).to(device=device)
+
+        self.mbd = MinibatchDiscrimination(int(start_channels/2), int(start_channels/4), 20)
+
+        self.to_critic_value = specnorm(
+            nn.Linear(
+                in_features=int(start_channels/2+start_channels/4), out_features=1
+            )
+        )
+
+    def forward(self, inputs):
+        out = self.dense1(inputs)
+        out = self.dense2(out)
+        out = self.dense3(out)
+        out = self.mbd(out)
+        out = self.to_critic_value(out)
+        return out
+
+
 class C_tiny_mbd_dstr(nn.Module):
     def __init__(
         self, in_channels, start_channels, dstr_chns=64, fac=1, sn: int = 0, device=None

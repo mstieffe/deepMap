@@ -744,12 +744,8 @@ class GAN():
                             device=self.device,
                         )
 
-                        if self.prior_mode in ['rand', 'random', 'r']:
-                            ndx = np.random.randint(val_bs)
-                            coords = torch.matmul(coords[ndx], rot_mtxs_transposed[ndx])
-                        else:
-                            coords = torch.matmul(coords, rot_mtxs_transposed)
-                            coords = torch.sum(coords, 0) / val_bs
+                        coords = torch.matmul(coords, rot_mtxs_transposed)
+                        coords = torch.sum(coords, 0) / val_bs
 
                         #for positions, mol in zip(coords, mols):
                         positions = coords.detach().cpu().numpy()
