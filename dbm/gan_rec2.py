@@ -758,9 +758,9 @@ class GAN():
                             atom.pos = pos + mol.com
 
                 if dir:
-                    samples_dir = self.out.output_dir / dir
+                    samples_dir = self.out.output_dir / (dir + "_bs" + str(val_bs) + "_" + self.prior_mode)
                 else:
-                    samples_dir = self.out.output_dir / "samples"
+                    samples_dir = self.out.output_dir / ("samples" + "_bs" + str(val_bs) + "_" + self.prior_mode)
                 samples_dir.mkdir(exist_ok=True)
 
                 for sample in self.data.samples_val_inp:
